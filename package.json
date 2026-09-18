@@ -1,0 +1,30 @@
+{
+  "name": "developer-portal",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "deploy": "astro check && astro build && wrangler deploy"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "0.42.1",
+    "@fontsource-variable/source-serif-4": "^5.3.0",
+    "astro": "7.3.3",
+    "starlight-links-validator": "^0.26.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "prettier": "^3.9.8",
+    "prettier-plugin-astro": "^1.0.1",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.1",
+    "wrangler": "^4.134.0"
+  }
+}

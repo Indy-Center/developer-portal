@@ -1,0 +1,201 @@
+---
+import "@fontsource-variable/source-serif-4";
+
+const sections = [
+  {
+    href: "/start-here/",
+    title: "Start here",
+    blurb:
+      "How the services fit together, getting access, and a first contribution.",
+  },
+  {
+    href: "/projects/",
+    title: "Projects",
+    blurb:
+      "Every repository in the org, what it does, and whether it's still alive.",
+  },
+  {
+    href: "/development/setup/",
+    title: "Development",
+    blurb:
+      "Machine setup, running identity locally, ports and env files, and the commands that come up.",
+  },
+  {
+    href: "/patterns/auth/",
+    title: "Patterns",
+    blurb:
+      "Wiring auth, Worker shapes, RPC versus Queues, and the CI workflows.",
+  },
+  {
+    href: "/agreements/definition-of-done/",
+    title: "Working agreements",
+    blurb:
+      "Definition of done, how we use Jira, branching, and what CI expects.",
+  },
+];
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Indy Center Tech</title>
+    <meta
+      name="description"
+      content="Developer documentation for Indy Center — Cloudflare Workers, identity, and the conventions we work to."
+    />
+    <script is:inline>
+      (function () {
+        var stored;
+        try {
+          stored = localStorage.getItem("starlight-theme");
+        } catch (e) {
+          stored = null;
+        }
+        var theme =
+          stored === "light" || stored === "dark"
+            ? stored
+            : // Same fallback as Starlight's ThemeProvider, so the landing page and
+              // the docs agree when the browser reports no preference.
+              window.matchMedia("(prefers-color-scheme: light)").matches
+              ? "light"
+              : "dark";
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Indy Center</p>
+      <h1>Documentation for the people who build it.</h1>
+      <p class="lede">
+        Nearly everything runs on Cloudflare Workers. This is the team's shared
+        reference — how the pieces fit together, how to get set up, and what we
+        hold each other to.
+      </p>
+      <ul class="sections">
+        {sections.map((s) => (
+          <li>
+            <a href={s.href}>{s.title}</a>
+            <p>{s.blurb}</p>
+          </li>
+        ))}
+      </ul>
+      <p class="foot">
+        Open source at{" "}
+        <a href="https://github.com/Indy-Center">github.com/Indy-Center</a>.
+        Corrections welcome — every page has an edit link.
+      </p>
+    </main>
+  </body>
+</html>
+
+<style is:global>
+  :root {
+    --bg: #fdfdfc;
+    --text: #1a1a18;
+    --text-secondary: #4a4a44;
+    --muted: #6a6a62;
+    --muted-faint: #74746c;
+    --border: #e8e8e2;
+    --link: #3a5a78;
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #141413;
+    --text: #f4f4f2;
+    --text-secondary: #b8b8b2;
+    --muted: #8a8a84;
+    --muted-faint: #8a8a84;
+    --border: #2a2a28;
+    --link: #7fa8cc;
+  }
+
+  html,
+  body {
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  body {
+    margin: 0;
+    padding: clamp(2rem, 8vw, 6rem) 1.5rem;
+    font-family:
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      sans-serif;
+    font-size: 1rem;
+    line-height: 1.7;
+  }
+</style>
+
+<style>
+  main {
+    max-width: 42rem;
+    margin: 0 auto;
+  }
+
+  .eyebrow {
+    font-size: 0.75rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 1rem;
+  }
+
+  h1 {
+    font-family: "Source Serif 4 Variable", Georgia, serif;
+    font-weight: 400;
+    font-size: clamp(2rem, 6vw, 3rem);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    margin: 0 0 1.25rem;
+  }
+
+  .lede {
+    font-size: 1.05rem;
+    color: var(--text-secondary);
+    margin: 0 0 3rem;
+  }
+
+  .sections {
+    list-style: none;
+    margin: 0 0 3rem;
+    padding: 0;
+  }
+
+  .sections li {
+    padding: 1.25rem 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .sections a {
+    font-family: "Source Serif 4 Variable", Georgia, serif;
+    font-size: 1.2rem;
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  .sections a:hover {
+    text-decoration: underline;
+  }
+
+  .sections p {
+    font-size: 0.95rem;
+    color: var(--muted);
+    margin: 0.35rem 0 0;
+  }
+
+  .foot {
+    font-size: 0.85rem;
+    color: var(--muted-faint);
+    border-top: 1px solid var(--border);
+    padding-top: 1.5rem;
+    margin: 0;
+  }
+
+  a {
+    color: var(--link);
+  }
+</style>

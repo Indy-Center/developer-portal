@@ -1,0 +1,34 @@
+---
+title: Projects
+description: Every repository in the Indy-Center organization, what it does, and whether it is still alive.
+---
+
+import ProjectList from "../../../components/ProjectList.astro";
+
+Every repository in the `Indy-Center` organization, grouped by whether it's still alive. Projects that aren't in the org aren't listed here, even when they're deployed — if you can't open it, it doesn't belong on this page.
+
+Each project's own `README.md` is the source of truth for that project. This page says which ones matter and which are on their way out; for the ones that matter, [Architecture](/start-here/architecture/) shows how they fit together.
+
+## Active
+
+Running and maintained.
+
+<ProjectList status="active" />
+
+## Scaffold
+
+Exists, but not built out. Don't depend on these.
+
+<ProjectList status="scaffold" />
+
+## Deprecated
+
+Still running, being replaced.
+
+<ProjectList status="deprecated" />
+
+## Archived
+
+Not deployed. Kept for history.
+
+<ProjectList status="archived" />

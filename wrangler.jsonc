@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "developer-portal",
+  "account_id": "afd63515948c9b2188ce14ef1504b2c1",
+  "compatibility_date": "2026-09-17",
+  "workers_dev": false,
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "404-page",
+    "html_handling": "auto-trailing-slash",
+  },
+  "routes": [{ "pattern": "tech.flyindycenter.com", "custom_domain": true }],
+}

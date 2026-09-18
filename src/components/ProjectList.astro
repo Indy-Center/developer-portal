@@ -1,0 +1,62 @@
+---
+import { projects, type ProjectStatus } from "../data/projects";
+
+interface Props {
+  status: ProjectStatus;
+}
+
+const { status } = Astro.props;
+const entries = projects.filter((p) => p.status === status);
+---
+
+<ul class="project-list">
+  {entries.map((p) => (
+    <li>
+      <p class="name">
+        <a href={p.repo}>
+          <strong>{p.name}</strong>
+        </a>
+        {p.url && (
+          <>
+            {" "}
+            &middot; <a href={p.url}>{p.url.replace(/^https:\/\//, "")}</a>
+          </>
+        )}
+      </p>
+      <p class="summary">{p.summary}</p>
+      {p.replacedBy && <p class="replaced">Replaced by: {p.replacedBy}</p>}
+    </li>
+  ))}
+</ul>
+
+<style>
+  .project-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .project-list li {
+    padding: 1rem 0;
+    border-top: 1px solid var(--sl-color-gray-5);
+  }
+
+  .project-list li:last-child {
+    border-bottom: 1px solid var(--sl-color-gray-5);
+  }
+
+  .name {
+    margin: 0 0 0.35rem;
+  }
+
+  .summary {
+    margin: 0;
+    color: var(--sl-color-gray-3);
+  }
+
+  .replaced {
+    margin: 0.35rem 0 0;
+    font-style: italic;
+    color: var(--sl-color-gray-3);
+  }
+</style>

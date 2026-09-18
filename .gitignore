@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.astro/
+.wrangler/
+.env*
+.DS_Store
+
+# Shared skills are committed; everything else under .claude stays personal.
+!.claude/
+.claude/*
+!.claude/skills/

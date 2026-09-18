@@ -1,0 +1,51 @@
+@import "@fontsource-variable/source-serif-4";
+
+:root {
+  --sl-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --sl-text-h1: 2.5rem;
+  --sl-text-h2: 1.75rem;
+  --sl-text-h3: 1.3rem;
+  --sl-content-width: 48rem;
+}
+
+:root[data-theme="light"] {
+  --sl-color-accent-low: #e8e8e2;
+  --sl-color-accent: #3a5a78;
+  --sl-color-accent-high: #1a3550;
+  --sl-color-white: #1a1a18;
+  --sl-color-gray-1: #2a2a26;
+  --sl-color-gray-2: #4a4a44;
+  --sl-color-gray-3: #6a6a62;
+  --sl-color-gray-5: #c8c8c0;
+  --sl-color-gray-6: #ecece6;
+  --sl-color-gray-7: #f6f6f1;
+  --sl-color-black: #fdfdfc;
+}
+
+:root[data-theme="dark"] {
+  --sl-color-accent-low: #16232e;
+  --sl-color-accent: #7fa8cc;
+  --sl-color-accent-high: #cfe0ef;
+  --sl-color-white: #f4f4f2;
+  --sl-color-gray-1: #e4e4e0;
+  --sl-color-gray-2: #b8b8b2;
+  --sl-color-gray-3: #8a8a84;
+  --sl-color-gray-5: #3a3a36;
+  --sl-color-gray-6: #262623;
+  --sl-color-gray-7: #1c1c1a;
+  --sl-color-black: #141413;
+}
+
+h1,
+h2,
+h3,
+h4,
+.site-title {
+  font-family: "Source Serif 4 Variable", Georgia, "Times New Roman", serif;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+}
+
+.sl-markdown-content {
+  line-height: 1.7;
+}
