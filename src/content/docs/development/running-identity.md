@@ -1,11 +1,13 @@
 ---
 title: Running identity
-description: Bringing up the identity Worker locally — VATSIM Connect dev credentials, .dev.vars, local D1, and how to reset it safely.
+description: Bringing up the identity Worker locally for work on identity itself — VATSIM Connect dev credentials, .dev.vars, local D1, and how to reset it safely.
 sidebar:
   order: 2
 ---
 
-`identity` runs locally under `wrangler dev` on `http://localhost:8787`, against a local SQLite copy of its D1 database. Run it whenever you're working on identity itself or on a consumer that calls it — `charts` binds to it over a service binding.
+`identity` runs locally under `wrangler dev` on `http://localhost:8787`, against a local SQLite copy of its D1 database. Run it when you're changing identity itself.
+
+Once identity's OAuth endpoints land (identity 1.1.0, on its `feat/http-transport` branch), apps on `localhost` log in through deployed identity, so working on charts or any other consumer won't need a local identity. [Auth](/patterns/auth/#local-development) covers that flow. Until then, a local charts still needs identity running here.
 
 ## Bring-up
 
@@ -42,22 +44,24 @@ If the team has a shared dev client, ask a maintainer for it rather than registe
 | `CONNECT_CLIENT_SECRET` | From the dev client                    |
 | `CONNECT_BASE_URL`      | `https://auth-dev.vatsim.net`          |
 | `CONNECT_CALLBACK_URL`  | `http://localhost:8787/login/callback` |
-| `COOKIE_DOMAIN`         | `localhost`                            |
-| `COOKIE_SECURE`         | `false`                                |
 
-`.dev.vars.example` already has everything except the two credentials. `.dev.vars` is gitignored.
+`.dev.vars.example` already has everything except the two credentials. Until 1.1.0 lands it also carries two cookie settings that the release removes; copy them as they are. `.dev.vars` is gitignored.
 
-`wrangler.jsonc` hard-codes the production values for the last four keys — `auth.vatsim.net`, the `auth.flyindycenter.com` callback, `.flyindycenter.com`, secure cookies. Wrangler layers `.dev.vars` over those `vars` during `wrangler dev`, so your local file wins without anyone editing the config. Leave `wrangler.jsonc` alone; a local value committed there ships to production on the next deploy.
+`wrangler.jsonc` hard-codes the production values for the last two keys: `auth.vatsim.net` and the `auth.flyindycenter.com` callback. Wrangler layers `.dev.vars` over those `vars` during `wrangler dev`, so your local file wins without anyone editing the config. Leave `wrangler.jsonc` alone; a local value committed there ships to production on the next deploy.
 
-## `COOKIE_DOMAIN=localhost`
+## Logging in to local identity
 
-This one value switches identity into dev mode. Three things change:
+Identity 1.1.0 has no dev mode. It runs the same code locally as in production, and three things make that work on `http://localhost:8787`:
 
-- **Cookie domain.** Login sets `fic_session` with no `Domain` attribute. Browsers reject a cookie scoped to `Domain=localhost`, so login would appear to succeed and then not stick.
-- **Return URLs.** `/login` accepts loopback `return_url` values — `http://localhost:*`, `http://127.0.0.1:*`, `http://[::1]:*`. Otherwise only `https://` URLs on `flyindycenter.com` pass. This is what lets a local consumer log in through local identity — [Environment](/development/environment/#charts-config) has the URL for charts.
-- **Dev fixtures.** `src/dev-fixtures.ts` pins a fake active controller session or flight plan to specific CIDs, so the controlling and flying UI flows can be exercised without signing on to the network. Fixtures win over the live feeds for those CIDs.
+- **Identity's cookie.** Identity remembers the user with `__Host-identity_session`, host-only and `Secure`. Browsers accept `Secure` cookies on `http://localhost`, so it sticks without a local override.
+- **Return addresses.** `/oauth/authorize` always accepts loopback `redirect_uri` values (`http://localhost`, `http://127.0.0.1` and `http://[::1]`, on any port) alongside `flyindycenter.com`. A local consumer points at local identity by building its client with `createIdentityClient({ baseUrl: "http://localhost:8787" })`.
+- **Dev fixtures.** The fake controlling session and flight plan used to exercise charts' controlling and flying UI move to charts, under its dev flag. Identity has none.
 
-None of it applies in production, where `COOKIE_DOMAIN` is `.flyindycenter.com`.
+To test a login by hand, open the authorize URL in a browser. After VATSIM, identity redirects to the return address with `?code=…`:
+
+```
+http://localhost:8787/oauth/authorize?response_type=code&client_id=dev&redirect_uri=http://localhost:5173/
+```
 
 ## Resetting local D1
 

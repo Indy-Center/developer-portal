@@ -2,7 +2,7 @@
 title: README template
 description: The Indy Center README layout, ready to copy, and when to use it.
 sidebar:
-  order: 5
+  order: 6
 ---
 
 This is the org's README layout. Use it when starting a new repository, and when a README has drifted far enough that patching it would take longer than rewriting it. Copy the block below into `README.md`, replace the placeholders, and delete the sections the template's own notes tell you to omit.

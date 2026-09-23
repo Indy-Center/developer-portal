@@ -2,7 +2,7 @@
 title: CI shape
 description: The two GitHub Actions workflows an Indy Center Worker needs — checks on pull requests, deploy on merge — plus the deploy token, D1 migrations, and gating deploy on checks.
 sidebar:
-  order: 4
+  order: 5
 ---
 
 A project gets two workflows: `ci.yml` runs checks on every pull request and on `main`, and `build-and-deploy.yml` deploys to Cloudflare on every push to `main`. This repository's are the model to copy; both live in [`.github/workflows/`](https://github.com/Indy-Center/developer-portal/tree/main/.github/workflows).

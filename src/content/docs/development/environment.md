@@ -22,13 +22,11 @@ Both files are gitignored; never commit them. For identity and community-website
 
 ### charts config
 
-`charts` needs no local config to run. Its login link comes from `PUBLIC_IDENTITY_URL` in `wrangler.jsonc` `vars`, which `vite dev` loads too. That value is production identity, so the link won't bring you back to `localhost`. To log in locally, run [identity](/development/running-identity/) and open its login route directly:
+`charts` needs no local config to run.
 
-```
-http://localhost:8787/login?return_url=http://localhost:5173/
-```
+Once identity's OAuth endpoints land (identity 1.1.0, on its `feat/http-transport` branch), charts logs in through deployed identity from `localhost` the same way it does in production. Its login link carries the page you're on, `http://localhost:5173/…`, as the return address; you log in with your real VATSIM account and come back to local charts with your real roles. Only charts runs locally. [Auth](/patterns/auth/#local-development) covers the flow for any app.
 
-Identity sets a host-only `fic_session` cookie on `localhost`, and cookies ignore the port, so charts sees the session. Use whatever port charts got; see [Ports](#ports).
+Until then, a local charts only sees a session from a locally running [identity](/development/running-identity/).
 
 ## Bindings aren't env vars
 
@@ -36,7 +34,7 @@ D1 databases, KV namespaces and service bindings are declared in `wrangler.jsonc
 
 The SvelteKit apps don't need `wrangler dev` to get them. `adapter-cloudflare` v7 calls Wrangler's `getPlatformProxy()` during `vite dev` and fills `event.platform.env` with local D1, KV, `vars` and service bindings. `charts` uses the upstream adapter; `community-website` uses the org's fork, `@indy-center/adapter-cloudflare`. Both behave the same here.
 
-Service bindings resolve locally to another Worker running on your machine, found through Wrangler's dev registry by Worker name — not by port, and never the deployed Worker. `charts` binds `IDENTITY`; if identity isn't running locally, the binding call fails, charts catches it, and every request looks logged out. Start [identity](/development/running-identity/) first.
+Service bindings resolve locally to another Worker running on your machine, found through Wrangler's dev registry by Worker name — not by port, and never the deployed Worker. So once charts moves to identity 1.1.0, it skips the `IDENTITY` binding under `vite dev` and talks to deployed identity over HTTPS instead; [Auth](/patterns/auth/#sveltekit) shows the one line that decides. Deployed, charts uses the binding.
 
 ## Ports
 
@@ -49,7 +47,7 @@ Service bindings resolve locally to another Worker running on your machine, foun
 
 Wrangler and Vite both take the next free port instead of failing (neither Vite config sets `strictPort`), so read the address each one prints.
 
-The port that matters is identity's. Its VATSIM Connect redirect URI and `CONNECT_CALLBACK_URL` both name 8787. Start identity first so it gets 8787; everything else can move aside on its own. To choose a port explicitly:
+The port that matters is identity's, when you're running it. Its VATSIM Connect redirect URI and `CONNECT_CALLBACK_URL` both name 8787. Start identity first so it gets 8787; everything else can move aside on its own. To choose a port explicitly:
 
 ```bash
 # npm passes everything after `--` to the end of the script — `vite dev` in
@@ -86,4 +84,4 @@ Two more mismatches in the same README:
 
 ### charts identity binding
 
-The README says the `IDENTITY` service binding is declared in `wrangler.jsonc` but not called, and a comment in `wrangler.jsonc` calls it "unused in v1". Both are stale: `src/hooks.server.ts` calls it on every request to load the session.
+The README says the `IDENTITY` service binding is declared in `wrangler.jsonc` but not called, and a comment in `wrangler.jsonc` calls it "unused in v1". Both are stale: `src/hooks.server.ts` calls it on every request to load the session. The comment goes when charts moves to identity 1.1.0.

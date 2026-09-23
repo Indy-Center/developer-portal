@@ -2,7 +2,7 @@
 title: Worker patterns
 description: The four shapes of Cloudflare Worker in the Indy Center org today, the repository that shows each one, and what decides between them.
 sidebar:
-  order: 2
+  order: 3
 ---
 
 Indy Center's Workers come in four shapes worth copying. Three things pick the shape: whether it serves pages or only routes, whether other Workers call it over RPC, and whether it needs a handler besides `fetch`, like a cron or an RPC export. Start a new project from the repository in the matching row. Two are simpler than any of these — `airports-redirect-worker` is a single `fetch` handler, and this site is static assets with no Worker code.
@@ -53,7 +53,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 import { buildApp } from "./app";
 import type { IdentityRpc } from "./client/api";
 
-const app = buildApp(); // Hono: /login, /login/callback, /logout, /healthz
+const app = buildApp(); // Hono: /oauth/*, /login/callback, /logout, /healthz
 
 export default class Identity
   extends WorkerEntrypoint<Cloudflare.Env>
@@ -73,7 +73,7 @@ export default class Identity
 
 Browsers reach the Hono routes at `auth.flyindycenter.com`; other Workers reach the class methods through a service binding, which isn't on the internet at all. `implements IdentityRpc` holds the class to the published interface — it can have more methods, never fewer.
 
-Publish the types a consumer compiles against from `src/client/`, as identity does; [Auth](/patterns/auth/#types-from-the-package) covers the package.
+Publish the types a consumer compiles against from `src/client/`, as identity does; [Auth](/patterns/auth/#the-client-library) covers the package.
 
 ## Hono only
 

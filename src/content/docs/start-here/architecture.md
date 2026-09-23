@@ -1,6 +1,6 @@
 ---
 title: Architecture
-description: How Indy Center's services fit together — Workers, the identity service, the session cookie, and what still runs elsewhere.
+description: How Indy Center's services fit together — Workers, the identity service, sessions, and what still runs elsewhere.
 sidebar:
   order: 2
 ---
@@ -18,7 +18,7 @@ Nearly everything runs on Cloudflare Workers. The exceptions:
 
 `identity` (`auth.flyindycenter.com`) is the centralized auth Worker. It owns the VATSIM Connect OAuth flow, sessions, users and roles. Other Workers don't reimplement any of that.
 
-A consumer binds to identity over a Cloudflare [service binding](https://developers.cloudflare.com/workers/runtime-apis/bindings/service-bindings/) and calls exactly one RPC method: `getSessionContext(token)`. It returns the user, their roles, session expiry, and their live controlling session and flight plan in one call — or `null`. Workers never call each other over HTTP; [RPC vs Queue](/patterns/rpc-vs-queue/) has the reasoning.
+A consumer binds to identity over a Cloudflare [service binding](https://developers.cloudflare.com/workers/runtime-apis/bindings/service-bindings/) and calls `getSessionContext(token)` on each request. It returns the user, their roles, session expiry, and their live controlling session and flight plan in one call — or `null`. Workers never call each other over HTTP; [RPC vs Queue](/patterns/rpc-vs-queue/) has the reasoning.
 
 ```
                  service binding
@@ -27,14 +27,14 @@ A consumer binds to identity over a Cloudflare [service binding](https://develop
 └──────────┘                       └──────────┘ → VATSIM Connect (OAuth)
 ```
 
-> **Why one method.** `IdentityRpc` in `identity/src/client/api.ts` is the versioned contract other repositories compile against. The `Identity` Worker class has more methods — `getUserById`, `addRole`, `invalidateSession` and others — callable at runtime but deliberately left out of the types. When a consumer needs one, it gets added to the interface in a minor version.
+> **Why a small contract.** `IdentityRpc` in `identity/src/client/api.ts` is the versioned contract other repositories compile against. Identity 1.1.0 trims the `Identity` Worker class to exactly that contract: `getSessionContext`, `logout` and `exchangeCode`. A consumer that needs a management operation gets it added then, with its authorization decided then.
 
 `charts` (`charts.flyindycenter.com`) is the reference consumer; [Auth](/patterns/auth/) walks through its wiring for anyone building a new one. `community-website` (`flyindycenter.com`) still runs its own older session system and hasn't migrated to identity yet.
 
-## The session cookie
+## Sessions
 
-The session cookie is `fic_session`, set on `.flyindycenter.com`, so any subdomain can read it. Identity owns the whole cookie lifecycle through its own `/login` and `/logout` routes. Consumers [link to those routes](/patterns/auth/#login-and-logout-links) and pass the cookie's value to `getSessionContext`; they never set or clear the cookie themselves.
+From identity 1.1.0, login is the OAuth authorization-code flow. Identity keeps a cookie of its own on `auth.flyindycenter.com` so it remembers who the user is. Each app trades a short-lived code for its own session token and stores it on its own origin; no cookie is shared across subdomains. The same flow works from `localhost`, and any HTTP client can use it, not only Workers. [Login flow](/patterns/auth-flow/) walks through it and [Auth](/patterns/auth/) has the code.
 
 ## Types
 
-Identity's types come from the `@indy-center/identity` package. It isn't published to a registry; consuming repositories resolve it by relative path to a sibling checkout at `../identity`. [Setup](/development/setup/#directory-layout) covers what that means for cloning.
+Identity's types and client come from the `@indy-center/identity` package, built from identity's `src/client/`. Today consuming repositories resolve it by relative path to a sibling checkout at `../identity`; [Setup](/development/setup/#directory-layout) covers what that means for cloning. From 1.1.0 it's published to npm from identity's CI and installed from the registry.

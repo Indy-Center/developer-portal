@@ -2,7 +2,7 @@
 title: RPC vs Queue
 description: How one Indy Center Worker talks to another — RPC over a service binding when the caller needs an answer, a Cloudflare Queue when the work only has to happen eventually, and never HTTP.
 sidebar:
-  order: 3
+  order: 4
 ---
 
 Workers talk to each other two ways: RPC over a service binding, which is synchronous and typed, and a Cloudflare Queue, which is asynchronous and retried.
@@ -25,4 +25,4 @@ Service bindings aren't reachable from the internet, so there's nothing to authe
 
 Considered, not chosen: an internal JSON route behind a shared secret header. The route is public whether you meant it or not, the secret has to be rotated in two Workers at once, browser callers need CORS on top, and the caller gets `unknown` back instead of a type.
 
-The rule is for Worker-to-Worker calls. Routes for browsers or outside services — identity's `/login`, discord-bot's webhooks — are HTTP because their callers aren't Workers.
+The rule is for Worker-to-Worker calls. Routes for browsers or outside services — identity's `/oauth` endpoints, discord-bot's webhooks — are HTTP because their callers aren't Workers.
