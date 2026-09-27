@@ -1,11 +1,19 @@
 ---
 title: CI shape
-description: The two GitHub Actions workflows an Indy Center Worker needs — checks on pull requests, deploy on merge — plus the deploy token, D1 migrations, and gating deploy on checks.
+description: The two GitHub Actions workflows an Indy Center project needs — checks on pull requests, deploy on merge — with the deploy step for each place we run code, the secrets, D1 migrations, and gating deploy on checks.
 sidebar:
   order: 5
 ---
 
-A project gets two workflows: `ci.yml` runs checks on every pull request and on `main`, and `build-and-deploy.yml` deploys to Cloudflare on every push to `main`. This repository's are the model to copy; both live in [`.github/workflows/`](https://github.com/Indy-Center/developer-portal/tree/main/.github/workflows).
+A project gets two workflows: `ci.yml` runs checks on every pull request and on `main`, and `build-and-deploy.yml` deploys on every push to `main`. The checks and the wiring between the two workflows are the same everywhere; only the deploy step depends on where the project runs.
+
+| Target                  | Runs                                                        | Deploy step                                              | Status                             |
+| ----------------------- | ----------------------------------------------------------- | -------------------------------------------------------- | ---------------------------------- |
+| Cloudflare Workers      | Anything that can be a Worker                               | `wrangler-action`                                        | Default for new projects           |
+| Vanderbilt VPS (Docker) | Long-running servers and self-hosted apps — Wiki.js, Moodle | rsync + `docker compose up -d` over SSH                  | Active                             |
+| k3s cluster (ArgoCD)    | `controller-tools` only                                     | Push an image to GHCR; ArgoCD Image Updater rolls it out | Being phased out — no new projects |
+
+Start with a Worker. Reach for the VPS when the thing needs a long-running process or is someone else's software shipped as a container. Don't start anything new on k3s.
 
 ## Checks
 
@@ -53,7 +61,17 @@ on:
 
 Identity's `ci.yml` has this shape today.
 
-## Deploy
+A project that deploys to the VPS also checks its compose file, after its own checks, so a typo fails on the pull request rather than on the box:
+
+```yaml
+- run: docker compose -f deploy/docker-compose.yml config -q
+# Fails on a mistyped image or tag before it reaches the VPS.
+- run: docker compose -f deploy/docker-compose.yml pull --quiet
+```
+
+`docker-infrastructure`'s `ci.yml` goes further for Traefik itself: it starts the stack on the runner and checks that it stays up and routes a test app.
+
+## Deploy to Workers
 
 From `developer-portal/.github/workflows/build-and-deploy.yml`:
 
@@ -82,15 +100,63 @@ jobs:
 
 SvelteKit and Astro projects need the build step, since `wrangler deploy` uploads their build output. A plain Worker like identity skips it; Wrangler bundles `main` itself. `wrangler-action` needs no `accountId` input because `wrangler.jsonc` sets `account_id`; keep that line in any new project.
 
+## Deploy to the VPS
+
+An app on the Vanderbilt VPS keeps everything the box needs in a `deploy/` folder: its `docker-compose.yml`, plus any config files it mounts. The deploy copies that folder to `~/apps/<repo name>/` as the `deploy` user and runs Compose there. From [`docker-infrastructure/examples/app/.github/workflows/build-and-deploy.yml`](https://github.com/Indy-Center/docker-infrastructure/blob/main/examples/app/.github/workflows/build-and-deploy.yml), after the SSH setup step:
+
+```yaml
+env:
+  # The app's directory on the VPS: /home/deploy/apps/<repo name>/.
+  APP: ${{ github.event.repository.name }}
+steps:
+  # ...checkout, then "Set up SSH" from the VANDERBILT_* secrets
+
+  # --delete removes files dropped from deploy/; excluded files (.env) are never deleted.
+  - run: rsync -rlz --delete --exclude=.env deploy/ "vps:apps/$APP/"
+
+  - run: |
+      ssh vps "APP=$APP bash -s" <<'EOF'
+      set -e
+      cd ~/apps/"$APP"
+      docker compose pull --quiet
+      docker compose up -d --remove-orphans
+      sleep 15
+      # Healthy = nothing restarting and no restarts since start.
+      if docker inspect -f '{{.State.Restarting}} {{.RestartCount}}' $(docker compose ps -aq) | grep -qv '^false 0$'; then
+        docker compose logs --tail 50
+        exit 1
+      fi
+      EOF
+```
+
+Copy the whole workflow rather than this excerpt; it reads the app name from the repository, so it needs no edits. [Deploying to the VPS](/patterns/vps-apps/) covers the rest of what a new app needs: the compose labels that route it through Traefik, DNS and certificates, runtime secrets and backups.
+
+> **Why rsync and Compose over SSH.** Traefik's own deploy in `docker-infrastructure` works this way, and it's been through a live cutover. Building images in CI and having the box pull them is the other common shape, and an app that ships its own code may want it later. Most of what runs on the VPS is someone else's image — Wiki.js, Moodle — so there's nothing to build, and copying a folder is the whole deploy.
+
+## Deploy to k3s
+
+The k3s cluster is being phased out. It runs one maintained service, `controller-tools` at `tools.flyindycenter.com`, and goes away once its Workers rewrite, `tools`, replaces it. This section describes how that deploy works so it can be kept running; don't copy it.
+
+`controller-tools` has no `ci.yml`. Its workflows only build images and push them to GHCR:
+
+- **`build-development.yml`.** Every push to `main` builds `<run number>-next`, `latest` and the commit SHA.
+- **`build-production.yml`.** Run by hand (`workflow_dispatch`); builds `<run number>-main`.
+
+Nothing in the workflow touches the cluster. ArgoCD Image Updater, configured in the `infrastructure` repository's `apps/ict/application-production.yaml`, watches GHCR and rolls production to the newest tag matching `^[0-9]+-main$`. A deploy is "run Build Production"; a rollback means pinning an older tag in `infrastructure`.
+
 ## Secrets
 
-The deploy workflow needs one repository secret, `CLOUDFLARE_WORKERS_API_KEY`: a Cloudflare API token with Workers Scripts:Edit, plus D1:Edit when the project has a database. A maintainer adds it as a repository secret.
+Each target needs a different kind of deploy credential, and none of them is the running app's own secrets.
 
-That token deploys the Worker; it isn't the Worker's own secrets. Runtime secrets such as identity's VATSIM Connect client secret are Worker secrets, set with `npx wrangler secret put`, and never appear in a workflow or in `wrangler.jsonc`.
+- **Workers.** One repository secret, `CLOUDFLARE_WORKERS_API_KEY`: a Cloudflare API token with Workers Scripts:Edit, plus D1:Edit when the project has a database. A maintainer adds it as a repository secret. Runtime secrets such as identity's VATSIM Connect client secret are Worker secrets, set with `npx wrangler secret put`, and never appear in a workflow or in `wrangler.jsonc`.
+- **VPS.** Four organization secrets, `VANDERBILT_HOST`, `VANDERBILT_DEPLOY_USER`, `VANDERBILT_DEPLOY_SSH_KEY` and `VANDERBILT_KNOWN_HOSTS`, limited to selected repositories. An org admin adds a new app's repository to all four. Runtime secrets live in `.env` in the app's directory on the box; the deploy never copies or deletes it.
+- **k3s.** The workflow pushes to GHCR with the built-in `GITHUB_TOKEN`. The cluster pulls with a sealed pull secret kept in `infrastructure`.
+
+> **Why the VPS secrets are org-level.** Every app on the VPS deploys as the same `deploy` user with the same key, so one set of secrets means one place to rotate it. They're limited to selected repositories rather than all of them because `deploy` is in the `docker` group, which makes the key root-equivalent on the box.
 
 ## D1 migrations
 
-A project with D1 applies migrations in the deploy workflow, before the deploy step. From `identity/.github/workflows/build-and-deploy.yml`:
+Workers only. A project with D1 applies migrations in the deploy workflow, before the deploy step. From `identity/.github/workflows/build-and-deploy.yml`:
 
 ```yaml
 - name: Apply D1 migrations
@@ -111,7 +177,7 @@ Migrate first, so new code never runs against the old schema. The cost is a wind
 
 The two workflows above are independent. A push to `main` starts both at once, and the deploy doesn't wait for or look at the checks. A pull request that fails [its checks](/agreements/ci-checks/) shouldn't be merged, but a direct push to `main`, or two pull requests that pass alone and break together, still deploys.
 
-To make deploy depend on checks, have the deploy workflow call CI as a reusable workflow. `teamspeak-bot` does this. Adapted from its `ci.yml` and `deploy.yml`:
+To make deploy depend on checks, have the deploy workflow call CI as a reusable workflow. `teamspeak-bot` and `docker-infrastructure` do this. Adapted from `teamspeak-bot`'s `ci.yml` and `deploy.yml`:
 
 ```yaml
 # ci.yml — no push trigger. On main, CI runs inside the deploy workflow
@@ -139,4 +205,4 @@ jobs:
       # ...same steps as above
 ```
 
-`teamspeak-bot` deploys a container to the VPS rather than a Worker, so only the workflow wiring carries over, not its deploy steps.
+Every VPS deploy is gated this way; the example app's workflows already are. `teamspeak-bot` deploys to the VPS with its own older forced-command script, so for VPS deploy steps copy `docker-infrastructure`'s example rather than `teamspeak-bot`'s.

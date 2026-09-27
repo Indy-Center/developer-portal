@@ -61,7 +61,14 @@ export const projects: Project[] = [
     repo: "https://github.com/Indy-Center/infrastructure",
     status: "active",
     summary:
-      "GitOps repository (ArgoCD + Kustomize) for the k3s cluster — ingress, cert-manager, sealed secrets, and manifests for every Kubernetes-hosted service.",
+      "GitOps repository (ArgoCD + Kustomize) for the k3s cluster — ingress, cert-manager, sealed secrets, and manifests for every Kubernetes-hosted service. The cluster is being phased out: it takes no new services and goes away once tools replaces controller-tools.",
+  },
+  {
+    name: "docker-infrastructure",
+    repo: "https://github.com/Indy-Center/docker-infrastructure",
+    status: "active",
+    summary:
+      "Traefik for the Vanderbilt VPS — TLS for *.flyindycenter.com with one Let's Encrypt wildcard, routing to every app container on the box — deployed by GitHub Actions. Also holds the example app every VPS-hosted repository copies.",
   },
   {
     name: "teamspeak-bot",
@@ -123,7 +130,7 @@ export const projects: Project[] = [
     status: "deprecated",
     replacedBy: "library (planned, no repo yet)",
     summary:
-      "Wiki.js instance on the VPS, still the live knowledge base for controller-facing documentation. Content has been exported to markdown; its replacement has not been built.",
+      "Wiki.js instance on the Vanderbilt VPS, routed by docker-infrastructure's Traefik, and still the live knowledge base for controller-facing documentation. Content has been exported to markdown; its replacement has not been built.",
   },
   {
     name: "vatsim-data-ingestor",
@@ -160,13 +167,6 @@ export const projects: Project[] = [
     replacedBy: "direct VATSIM feed fetch inside controller-tools",
     summary:
       "Postgres and RabbitMQ API for storing flight plans. No cluster manifest exists, and controller-tools fetches the VATSIM feed directly instead.",
-  },
-  {
-    name: "postiz-app",
-    repo: "https://github.com/Indy-Center/postiz-app",
-    status: "active",
-    summary:
-      "Self-hosted Postiz social media management deployment on the VPS. Turnkey, not actively developed.",
   },
   {
     name: "scheddy",
