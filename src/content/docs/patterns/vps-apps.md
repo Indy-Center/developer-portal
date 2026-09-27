@@ -121,7 +121,7 @@ Considered, not chosen: having the Worker pass the path through itself (`return 
 
 Two kinds, kept apart:
 
-- **Deploy credentials.** The four `VANDERBILT_*` organization secrets. They're limited to selected repositories, so an org admin adds the new repository to each of them before its first deploy: **Org Settings → Secrets and variables → Actions → (secret) → Repository access**.
+- **Deploy credentials.** The `VANDERBILT_*` organization variables (`VANDERBILT_HOST`, `VANDERBILT_DEPLOY_USER`) and secrets (`VANDERBILT_DEPLOY_SSH_KEY`, `VANDERBILT_KNOWN_HOSTS`). All four are limited to selected repositories, so an org admin adds the new repository to each of them before its first deploy: **Org Settings → Secrets and variables → Actions → (secret) → Repository access**.
 - **Runtime values.** Database passwords, API tokens, and any setting the app reads from its environment. Each one is its own repository secret named `ENV_<NAME>`, or a repository variable with the same prefix when it isn't secret. Anyone who administers the app's repository sets them under **Settings → Secrets and variables → Actions**; nobody needs SSH access to the box.
 
 On every deploy, the **Write .env** step collects every `ENV_*` secret and variable, strips the prefix, and writes `~/apps/<repo name>/.env` on the box. `ENV_DISCORD_TOKEN` becomes:
@@ -137,7 +137,7 @@ DISCORD_TOKEN='the value'   # single-quoted, so Compose reads $ and # literally
 - **Quotes and newlines.** A value can't contain a single quote or a newline. The step fails with the secret's name before anything reaches the box.
 - **Where values are kept.** GitHub never shows a secret again after it's saved; keep the source copy in 1Password.
 
-Considered, not chosen: a hand-made `.env` on the box that the deploy never touches. It keeps runtime secrets out of GitHub, but every change needs someone with SSH access, and a rebuilt box comes back without them. A repository with the `VANDERBILT_*` secrets can already run anything on the box as `deploy`, so keeping its runtime secrets out of GitHub protects little. One `ENV_FILE` secret holding the whole file was also considered; it means re-pasting every value to change one.
+Considered, not chosen: a hand-made `.env` on the box that the deploy never touches. It keeps runtime secrets out of GitHub, but every change needs someone with SSH access, and a rebuilt box comes back without them. A repository with the `VANDERBILT_*` credentials can already run anything on the box as `deploy`, so keeping its runtime secrets out of GitHub protects little. One `ENV_FILE` secret holding the whole file was also considered; it means re-pasting every value to change one.
 
 Traefik's Cloudflare token and rclone's R2 credentials are the exception: they stay in files on the box, because Traefik and rclone need them between deploys, not only during one.
 
@@ -187,7 +187,7 @@ Each of these happened during the setup.
 ## Open questions
 
 - **Apps that ship their own code.** The example assumes an image someone else publishes. An app built from its own repository needs an image, and the choice is between building in CI and pushing to GHCR, or building on the box. Lean: build in CI and push to GHCR, with the package public — the VPS shouldn't build, and the repositories are public anyway.
-- **Backup workflow shape.** Lean: a scheduled workflow per app that reuses the `VANDERBILT_*` secrets and runs a dump script specific to the app's database. The wiki's, with SQLite, comes first and becomes the template.
+- **Backup workflow shape.** Lean: a scheduled workflow per app that reuses the `VANDERBILT_*` credentials and runs a dump script specific to the app's database. The wiki's, with SQLite, comes first and becomes the template.
 
 ## Out of scope
 
