@@ -11,8 +11,8 @@ Indy Center runs on Cloudflare Workers. One of them, `identity`, owns auth; `cha
 
 Nearly everything runs on Cloudflare Workers. The exceptions:
 
-- **VPS.** Self-hosted apps that need a long-running server — Wiki.js and Postiz — run on a separate VPS.
-- **k3s cluster.** A small Kubernetes cluster still runs `controller-tools`, the older ATC tools app at `tools.flyindycenter.com`. It's the only cluster service the team maintains. Its Workers rewrite, `tools` at `app.controller.tools`, exists but is early.
+- **Vanderbilt VPS.** Apps that need a long-running server or are someone else's software in a container — Wiki.js today. One Traefik, deployed from `docker-infrastructure`, serves a Let's Encrypt wildcard for `*.flyindycenter.com` and routes to each app; every app deploys itself from its own repository over SSH. [Deploying to the VPS](/patterns/vps-apps/) covers adding one.
+- **k3s cluster.** Being phased out. It still runs `controller-tools`, the older ATC tools app at `tools.flyindycenter.com`, and nothing new goes on it. It goes away once `controller-tools`' Workers rewrite, `tools` at `app.controller.tools`, replaces it; that rewrite exists but is early.
 
 ## Identity
 
