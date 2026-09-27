@@ -88,6 +88,35 @@ Any `<name>.flyindycenter.com` already works. The wildcard DNS record sends it t
 
 An explicit DNS record wins over the wildcard. If one exists for the hostname — left over from an old deployment, or proxied through Cloudflare — it decides where traffic goes. Check **DNS → Records** in Cloudflare before assuming the wildcard applies.
 
+### Serving under a path
+
+An app can live under a path on a hostname instead of on its own subdomain — Moodle at `training.flyindycenter.com/moodle` is the first planned case. Add a `PathPrefix` to the router rule; nothing in Traefik's own config changes:
+
+```yaml
+labels:
+  - traefik.enable=true
+  - traefik.http.routers.moodle.rule=Host(`training.flyindycenter.com`) && PathPrefix(`/moodle`)
+  - traefik.http.routers.moodle.entrypoints=websecure
+  - traefik.http.routers.moodle.tls=true
+```
+
+Only do this for apps that support a base URL, and have the app serve the path itself. Moodle does: set `$CFG->wwwroot` to the full URL, including `/moodle`, before the first install, because it writes absolute links into its database and moving it later means rewriting them. Wiki.js 2 doesn't support a base path, so it keeps a subdomain.
+
+Considered, not chosen: Traefik's `StripPrefix` middleware, which hides the path from the app. Most apps still write absolute links and redirects to `/`, so pages break in ways that are hard to trace. Use it only for an app that provably emits relative URLs.
+
+When a path-routed app shares a hostname with another app on the box, the longer rule wins: `Host && PathPrefix` beats a plain `Host`, so the two can coexist without priorities.
+
+### Sharing a hostname with a Worker
+
+If the hostname belongs to a Worker, requests never reach the VPS. How the Worker is attached decides whether a path can be carved out:
+
+- **Custom Domain.** The Worker owns every path on the hostname and there's no origin behind it. A path can't be sent anywhere else; the Worker has to move to a route first.
+- **Route** (`pattern: "<host>/*"`). Add a second, more specific route for the path, such as `training.flyindycenter.com/moodle*`, with no Worker assigned, and a **proxied** DNS record for the hostname pointing at the VPS. Cloudflare sends that path to the origin and everything else to the Worker.
+
+The no-Worker route and the DNS record live in the Cloudflare dashboard, not in either repository; note them in both apps' READMEs. Switching a Worker from a Custom Domain to a route removes the DNS record the Custom Domain created, so put the proxied record and the routes in place in the same change, or the Worker's site goes down in between.
+
+Considered, not chosen: having the Worker pass the path through itself (`return fetch(request)`). It keeps the configuration in git, but every request to the VPS app then counts against the Worker's request and CPU limits.
+
 ### Secrets
 
 Two kinds, kept apart:
