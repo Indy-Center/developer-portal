@@ -71,6 +71,13 @@ export const projects: Project[] = [
       "Traefik for the Vanderbilt VPS — TLS for *.flyindycenter.com with one Let's Encrypt wildcard, routing to every app container on the box — deployed by GitHub Actions. Also holds the example app every VPS-hosted repository copies.",
   },
   {
+    name: "vnas-discord-bot",
+    repo: "https://github.com/Indy-Center/vnas-discord-bot",
+    status: "active",
+    summary:
+      "Discord bot that keeps one embed per Indy Center facility up to date with who's staffed on vNAS, polling the controller feed every 30 seconds. The first app deployed to the Vanderbilt VPS through the docker-infrastructure pipeline.",
+  },
+  {
     name: "teamspeak-bot",
     repo: "https://github.com/Indy-Center/teamspeak-bot",
     status: "scaffold",
