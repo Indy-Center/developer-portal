@@ -112,7 +112,9 @@ steps:
   # ...checkout, then "Set up SSH" from the VANDERBILT_* secrets
 
   # --delete removes files dropped from deploy/; excluded files (.env) are never deleted.
-  - run: rsync -rlz --delete --exclude=.env deploy/ "vps:apps/$APP/"
+  - run: rsync -rlz --delete --exclude=.env --exclude=.env.example deploy/ "vps:apps/$APP/"
+
+  # ..."Write .env": every ENV_* repo secret and variable becomes a line in ~/apps/<app>/.env
 
   - run: |
       ssh vps "APP=$APP bash -s" <<'EOF'
@@ -149,7 +151,7 @@ Nothing in the workflow touches the cluster. ArgoCD Image Updater, configured in
 Each target needs a different kind of deploy credential, and none of them is the running app's own secrets.
 
 - **Workers.** One repository secret, `CLOUDFLARE_WORKERS_API_KEY`: a Cloudflare API token with Workers Scripts:Edit, plus D1:Edit when the project has a database. A maintainer adds it as a repository secret. Runtime secrets such as identity's VATSIM Connect client secret are Worker secrets, set with `npx wrangler secret put`, and never appear in a workflow or in `wrangler.jsonc`.
-- **VPS.** Four organization secrets, `VANDERBILT_HOST`, `VANDERBILT_DEPLOY_USER`, `VANDERBILT_DEPLOY_SSH_KEY` and `VANDERBILT_KNOWN_HOSTS`, limited to selected repositories. An org admin adds a new app's repository to all four. Runtime secrets live in `.env` in the app's directory on the box; the deploy never copies or deletes it.
+- **VPS.** Four organization secrets, `VANDERBILT_HOST`, `VANDERBILT_DEPLOY_USER`, `VANDERBILT_DEPLOY_SSH_KEY` and `VANDERBILT_KNOWN_HOSTS`, limited to selected repositories. An org admin adds a new app's repository to all four. Runtime values are repository secrets named `ENV_<NAME>`, which the deploy writes to the app's `.env` on the box; [Deploying to the VPS](/patterns/vps-apps/#secrets) has the details.
 - **k3s.** The workflow pushes to GHCR with the built-in `GITHUB_TOKEN`. The cluster pulls with a sealed pull secret kept in `infrastructure`.
 
 > **Why the VPS secrets are org-level.** Every app on the VPS deploys as the same `deploy` user with the same key, so one set of secrets means one place to rotate it. They're limited to selected repositories rather than all of them because `deploy` is in the `docker` group, which makes the key root-equivalent on the box.

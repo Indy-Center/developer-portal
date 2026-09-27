@@ -48,7 +48,7 @@ services:
     restart: unless-stopped
     env_file:
       - path: .env
-        required: false # runtime secrets; only exists on the box
+        required: false # written by the deploy from ENV_* secrets
     networks:
       - traefik-shared
       - internal
@@ -122,13 +122,24 @@ Considered, not chosen: having the Worker pass the path through itself (`return 
 Two kinds, kept apart:
 
 - **Deploy credentials.** The four `VANDERBILT_*` organization secrets. They're limited to selected repositories, so an org admin adds the new repository to each of them before its first deploy: **Org Settings → Secrets and variables → Actions → (secret) → Repository access**.
-- **Runtime secrets.** Database passwords, API keys, anything the app reads at runtime. They go in `.env` in the app's directory on the box, and never in GitHub. The deploy excludes `.env`, so it's never copied over or deleted. Create it once, as an admin on the VPS, without putting the values in shell history:
+- **Runtime values.** Database passwords, API tokens, and any setting the app reads from its environment. Each one is its own repository secret named `ENV_<NAME>`, or a repository variable with the same prefix when it isn't secret. Anyone who administers the app's repository sets them under **Settings → Secrets and variables → Actions**; nobody needs SSH access to the box.
+
+On every deploy, the **Write .env** step collects every `ENV_*` secret and variable, strips the prefix, and writes `~/apps/<repo name>/.env` on the box. `ENV_DISCORD_TOKEN` becomes:
 
 ```sh
-sudo -u deploy mkdir -p /home/deploy/apps/<repo name>
-sudo -u deploy install -m 600 /dev/null /home/deploy/apps/<repo name>/.env
-sudo -u deploy nano /home/deploy/apps/<repo name>/.env
+DISCORD_TOKEN='the value'   # single-quoted, so Compose reads $ and # literally
 ```
+
+`deploy/.env.example` in the repository lists the names the app expects, without values, so whoever sets the secrets knows what's needed. The compose file reads the result with `env_file: .env`.
+
+- **Changing a value.** Update the one secret and re-run the deploy. Compose sees the environment changed and recreates the container.
+- **The file on the box.** The deploy owns it and rewrites it every time. An edit made on the box lasts until the next deploy.
+- **Quotes and newlines.** A value can't contain a single quote or a newline. The step fails with the secret's name before anything reaches the box.
+- **Where values are kept.** GitHub never shows a secret again after it's saved; keep the source copy in 1Password.
+
+Considered, not chosen: a hand-made `.env` on the box that the deploy never touches. It keeps runtime secrets out of GitHub, but every change needs someone with SSH access, and a rebuilt box comes back without them. A repository with the `VANDERBILT_*` secrets can already run anything on the box as `deploy`, so keeping its runtime secrets out of GitHub protects little. One `ENV_FILE` secret holding the whole file was also considered; it means re-pasting every value to change one.
+
+Traefik's Cloudflare token and rclone's R2 credentials are the exception: they stay in files on the box, because Traefik and rclone need them between deploys, not only during one.
 
 ### First deploy
 
