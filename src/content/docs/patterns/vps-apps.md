@@ -156,7 +156,7 @@ Considered, not chosen: having the Worker pass the path through itself (`return 
 
 Two kinds, kept apart:
 
-- **Deploy credentials.** The four `VANDERBILT_*` organization secrets. They're limited to selected repositories, so an org admin adds the new repository to each of them before its first deploy: **Org Settings → Secrets and variables → Actions → (secret) → Repository access**.
+- **Deploy credentials.** The `VANDERBILT_*` organization variables (`VANDERBILT_HOST`, `VANDERBILT_DEPLOY_USER`) and secrets (`VANDERBILT_DEPLOY_SSH_KEY`, `VANDERBILT_KNOWN_HOSTS`). All four are limited to selected repositories, so an org admin adds the new repository to each of them before its first deploy: **Org Settings → Secrets and variables → Actions → (secret) → Repository access**.
 - **Runtime values.** Database passwords, API tokens, and any setting the app reads from its environment. Each one is its own repository secret named `ENV_<NAME>`, or a repository variable with the same prefix when it isn't secret. Anyone who administers the app's repository sets them under **Settings → Secrets and variables → Actions**; nobody needs SSH access to the box.
 
 The **Write .env** step in `build-and-deploy.yml` lists each setting by name, mapped from wherever it's stored:
@@ -184,7 +184,7 @@ DISCORD_TOKEN='the value'   # single-quoted, so Compose reads $ and # literally
 - **Where values are kept.** GitHub never shows a secret again after it's saved; keep the source copy in 1Password.
 - **Secret or variable.** Only real secrets go in secrets. GitHub replaces every secret's value with `***` anywhere it appears in a log, so a secret like `false` or `5` masks those strings in every step's output and makes failures hard to read. Flags, numbers and log levels are `ENV_*` variables.
 
-Considered, not chosen: a hand-made `.env` on the box that the deploy never touches. It keeps runtime secrets out of GitHub, but every change needs someone with SSH access, and a rebuilt box comes back without them. A repository with the `VANDERBILT_*` secrets can already run anything on the box as `deploy`, so keeping its runtime secrets out of GitHub protects little. One `ENV_FILE` secret holding the whole file was also considered; it means re-pasting every value to change one.
+Considered, not chosen: a hand-made `.env` on the box that the deploy never touches. It keeps runtime secrets out of GitHub, but every change needs someone with SSH access, and a rebuilt box comes back without them. A repository with the `VANDERBILT_*` credentials can already run anything on the box as `deploy`, so keeping its runtime secrets out of GitHub protects little. One `ENV_FILE` secret holding the whole file was also considered; it means re-pasting every value to change one.
 
 Considered, not chosen: collecting every `ENV_*` secret automatically with `toJSON(secrets)`, so a new setting needs no workflow change. That hands every secret the repository can see — the deploy key included — to a step that sends data to another host, and GitHub's malicious-workflow detection held the first app's deploy for exactly that. Listing settings by name costs one line per setting and means the step sees only what the app needs.
 
@@ -238,7 +238,7 @@ Each of these happened during the setup.
 
 ## Open questions
 
-- **Backup workflow shape.** Lean: a scheduled workflow per app that reuses the `VANDERBILT_*` secrets and runs a dump script specific to the app's database. The wiki's, with SQLite, comes first and becomes the template.
+- **Backup workflow shape.** Lean: a scheduled workflow per app that reuses the `VANDERBILT_*` credentials and runs a dump script specific to the app's database. The wiki's, with SQLite, comes first and becomes the template.
 
 ## Out of scope
 
