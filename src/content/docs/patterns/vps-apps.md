@@ -7,7 +7,7 @@ sidebar:
 
 The Vanderbilt VPS runs the apps that can't be Workers: long-running servers and self-hosted software shipped as containers. One Traefik instance, deployed from [`docker-infrastructure`](https://github.com/Indy-Center/docker-infrastructure), terminates TLS for `*.flyindycenter.com` and routes to every app on the box. Each app lives in its own repository and deploys itself with GitHub Actions. This page is for someone adding an app; [CI shape](/patterns/ci-shape/#deploy-to-the-vps) has the workflow side.
 
-**Status.** Traefik and the pipeline are live and the wiki is routed through them. The app workflows in [`examples/app/`](https://github.com/Indy-Center/docker-infrastructure/tree/main/examples/app) are the documented pattern but haven't been through a real app yet; expect this page to change after the first one.
+**Status.** Traefik and the pipeline are live and the wiki is routed through them. The first app deployed with the [`examples/app/`](https://github.com/Indy-Center/docker-infrastructure/tree/main/examples/app) workflows is [`vnas-discord-bot`](https://github.com/Indy-Center/vnas-discord-bot), on 2026-09-27; what it turned up is folded in below.
 
 ## How the box is set up
 
@@ -36,6 +36,39 @@ Copy [`examples/app/`](https://github.com/Indy-Center/docker-infrastructure/tree
 - `.github/workflows/build-and-deploy.yml` — runs CI, rsyncs `deploy/` to the box, runs `docker compose up -d`, and fails if anything is restarting 15 seconds later. It reads the app's name from the repository, so it needs no edits.
 
 The repository's name becomes the directory on the box and the Compose project name, which prefixes the app's volumes. Renaming the repository later starts the app with new, empty volumes; the old ones stay behind until someone moves the data.
+
+### Apps that build their own image
+
+The example runs someone else's published image. An app built from its own repository builds the image in CI, pushes it to GitHub's container registry (GHCR), and the box pulls it — the VPS never builds. From `vnas-discord-bot`'s `build-and-deploy.yml`, before the SSH setup:
+
+```yaml
+permissions:
+  contents: read
+  packages: write # push the image to ghcr.io
+
+# ...in the build-and-deploy job:
+env:
+  APP: ${{ github.event.repository.name }}
+  IMAGE: ghcr.io/indy-center/vnas-discord-bot
+steps:
+  - uses: actions/checkout@v4
+  - name: Build and push the image
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    run: |
+      echo "$GITHUB_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      # The source label links the package to this repository, so it inherits the repo's access.
+      docker build \
+        --label org.opencontainers.image.source="https://github.com/${{ github.repository }}" \
+        -t "$IMAGE:latest" -t "$IMAGE:${{ github.sha }}" .
+      docker push --all-tags "$IMAGE"
+```
+
+`deploy/docker-compose.yml` then uses `image: ghcr.io/indy-center/<repo>:latest`.
+
+**Make the package public after the first push.** GHCR creates every new package as private, even for a public repository, and the box pulls without logging in, so the first deploy fails with `unauthorized`. Open **github.com/orgs/Indy-Center/packages → the package → Package settings → Change visibility → Public**, then re-run the deploy. GitHub's API can't change visibility; it's a one-time click. Nothing secret goes in an image — runtime values come from the `ENV_*` secrets at deploy time — so a public image exposes only a build of code that's already public.
+
+Considered, not chosen: keeping packages private and logging the box in. A long-lived token on the box belongs to one person's account and reads every package they can. Logging in per deploy with the workflow's own `GITHUB_TOKEN`, into a per-app Docker config directory, keeps nothing on the box, but the token expires with the run, so a manual `docker compose pull` on the box fails. That per-deploy login is the route for an app whose repository is private.
 
 ### Routing
 
@@ -81,6 +114,8 @@ volumes:
 ```
 
 Don't publish ports on the host; Traefik reaches the container over `traefik-shared`. Keep data in named volumes: the deploy rsyncs with `--delete`, so a bind mount under `deploy/` is wiped by the next deploy.
+
+An app with no web surface — a bot that only makes outbound calls, like `vnas-discord-bot` — skips all of this: no labels, no `traefik-shared`, no published ports.
 
 ### Hostname, DNS and certificate
 
@@ -136,6 +171,7 @@ DISCORD_TOKEN='the value'   # single-quoted, so Compose reads $ and # literally
 - **The file on the box.** The deploy owns it and rewrites it every time. An edit made on the box lasts until the next deploy.
 - **Quotes and newlines.** A value can't contain a single quote or a newline. The step fails with the secret's name before anything reaches the box.
 - **Where values are kept.** GitHub never shows a secret again after it's saved; keep the source copy in 1Password.
+- **Secret or variable.** Only real secrets go in secrets. GitHub replaces every secret's value with `***` anywhere it appears in a log, so a secret like `false` or `5` masks those strings in every step's output and makes failures hard to read. Flags, numbers and log levels are `ENV_*` variables.
 
 Considered, not chosen: a hand-made `.env` on the box that the deploy never touches. It keeps runtime secrets out of GitHub, but every change needs someone with SSH access, and a rebuilt box comes back without them. A repository with the `VANDERBILT_*` secrets can already run anything on the box as `deploy`, so keeping its runtime secrets out of GitHub protects little. One `ENV_FILE` secret holding the whole file was also considered; it means re-pasting every value to change one.
 
@@ -183,10 +219,11 @@ Each of these happened during the setup.
 - **Cloudflare error 1014.** A proxied CNAME pointing into another Cloudflare account. It isn't an SSL problem and the SSL mode can't fix it; the record needs re-pointing or deleting.
 - **Account-owned Cloudflare tokens.** `/user/tokens/verify` rejects them as invalid. Verify at `/accounts/<account id>/tokens/verify` instead; the token itself works.
 - **Duplicate router names.** Two apps defining `routers.web` overwrite each other silently. Prefix every router and service name with the app's name.
+- **Private GHCR package.** The first app deploy failed at `docker compose pull` with `unauthorized`: the image was pushed fine, but GHCR had made the new package private. Making it public fixed it; see [Apps that build their own image](#apps-that-build-their-own-image).
+- **Short values as secrets.** The same first deploy's logs had `sleep ***` and hashes full of `***`, because a few settings like `false` were stored as secrets. They belong in variables.
 
 ## Open questions
 
-- **Apps that ship their own code.** The example assumes an image someone else publishes. An app built from its own repository needs an image, and the choice is between building in CI and pushing to GHCR, or building on the box. Lean: build in CI and push to GHCR, with the package public — the VPS shouldn't build, and the repositories are public anyway.
 - **Backup workflow shape.** Lean: a scheduled workflow per app that reuses the `VANDERBILT_*` secrets and runs a dump script specific to the app's database. The wiki's, with SQLite, comes first and becomes the template.
 
 ## Out of scope
