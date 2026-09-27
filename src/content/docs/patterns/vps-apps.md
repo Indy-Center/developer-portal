@@ -159,21 +159,34 @@ Two kinds, kept apart:
 - **Deploy credentials.** The four `VANDERBILT_*` organization secrets. They're limited to selected repositories, so an org admin adds the new repository to each of them before its first deploy: **Org Settings → Secrets and variables → Actions → (secret) → Repository access**.
 - **Runtime values.** Database passwords, API tokens, and any setting the app reads from its environment. Each one is its own repository secret named `ENV_<NAME>`, or a repository variable with the same prefix when it isn't secret. Anyone who administers the app's repository sets them under **Settings → Secrets and variables → Actions**; nobody needs SSH access to the box.
 
-On every deploy, the **Write .env** step collects every `ENV_*` secret and variable, strips the prefix, and writes `~/apps/<repo name>/.env` on the box. `ENV_DISCORD_TOKEN` becomes:
+The **Write .env** step in `build-and-deploy.yml` lists each setting by name, mapped from wherever it's stored:
+
+```yaml
+- name: Write .env
+  env:
+    # One line per setting in deploy/.env.example. secrets.* for real secrets, vars.* for the rest.
+    ENV_DISCORD_TOKEN: ${{ secrets.ENV_DISCORD_TOKEN }}
+    ENV_CHANNEL_ID: ${{ vars.ENV_CHANNEL_ID }}
+```
+
+On every deploy it strips the prefix from each setting that's set and writes `~/apps/<repo name>/.env` on the box. `ENV_DISCORD_TOKEN` becomes:
 
 ```sh
 DISCORD_TOKEN='the value'   # single-quoted, so Compose reads $ and # literally
 ```
 
-`deploy/.env.example` in the repository lists the names the app expects, without values, so whoever sets the secrets knows what's needed. The compose file reads the result with `env_file: .env`.
+`deploy/.env.example` in the repository lists the names the app expects, without values. Adding a setting means three things: a line in `.env.example`, a repository secret or variable, and a line in the step. The compose file reads the result with `env_file: .env`.
 
-- **Changing a value.** Update the one secret and re-run the deploy. Compose sees the environment changed and recreates the container.
+- **Changing a value.** Update the one secret or variable and re-run the deploy. Compose sees the environment changed and recreates the container.
+- **Unset settings.** A setting listed in the step but not set in GitHub arrives empty and is left out of `.env`, so the app's own default applies.
 - **The file on the box.** The deploy owns it and rewrites it every time. An edit made on the box lasts until the next deploy.
 - **Quotes and newlines.** A value can't contain a single quote or a newline. The step fails with the secret's name before anything reaches the box.
 - **Where values are kept.** GitHub never shows a secret again after it's saved; keep the source copy in 1Password.
 - **Secret or variable.** Only real secrets go in secrets. GitHub replaces every secret's value with `***` anywhere it appears in a log, so a secret like `false` or `5` masks those strings in every step's output and makes failures hard to read. Flags, numbers and log levels are `ENV_*` variables.
 
 Considered, not chosen: a hand-made `.env` on the box that the deploy never touches. It keeps runtime secrets out of GitHub, but every change needs someone with SSH access, and a rebuilt box comes back without them. A repository with the `VANDERBILT_*` secrets can already run anything on the box as `deploy`, so keeping its runtime secrets out of GitHub protects little. One `ENV_FILE` secret holding the whole file was also considered; it means re-pasting every value to change one.
+
+Considered, not chosen: collecting every `ENV_*` secret automatically with `toJSON(secrets)`, so a new setting needs no workflow change. That hands every secret the repository can see — the deploy key included — to a step that sends data to another host, and GitHub's malicious-workflow detection held the first app's deploy for exactly that. Listing settings by name costs one line per setting and means the step sees only what the app needs.
 
 Traefik's Cloudflare token and rclone's R2 credentials are the exception: they stay in files on the box, because Traefik and rclone need them between deploys, not only during one.
 
@@ -221,6 +234,7 @@ Each of these happened during the setup.
 - **Duplicate router names.** Two apps defining `routers.web` overwrite each other silently. Prefix every router and service name with the app's name.
 - **Private GHCR package.** The first app deploy failed at `docker compose pull` with `unauthorized`: the image was pushed fine, but GHCR had made the new package private. Making it public fixed it; see [Apps that build their own image](#apps-that-build-their-own-image).
 - **Short values as secrets.** The same first deploy's logs had `sleep ***` and hashes full of `***`, because a few settings like `false` were stored as secrets. They belong in variables.
+- **"This workflow file may be malicious."** A later deploy was held for approval because the Write .env step passed `toJSON(secrets)` to a step that uses SSH. The step now lists settings by name. If a workflow is held anyway, check that secrets leave the runner only through `ssh vps` before clicking **Approve and run**.
 
 ## Open questions
 

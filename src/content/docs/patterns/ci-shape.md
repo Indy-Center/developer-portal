@@ -114,7 +114,7 @@ steps:
   # --delete removes files dropped from deploy/; excluded files (.env) are never deleted.
   - run: rsync -rlz --delete --exclude=.env --exclude=.env.example deploy/ "vps:apps/$APP/"
 
-  # ..."Write .env": every ENV_* repo secret and variable becomes a line in ~/apps/<app>/.env
+  # ..."Write .env": the ENV_* settings listed in that step become lines in ~/apps/<app>/.env
 
   - run: |
       ssh vps "APP=$APP bash -s" <<'EOF'
