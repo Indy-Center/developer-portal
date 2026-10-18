@@ -10,5 +10,5 @@ npm run dev           # start the local dev server
 npm run check         # type-check with astro check
 npm run format:check  # verify formatting with prettier
 npm run build          # produce the static site in dist/
-npm test               # run vitest
+npm test               # run vitest (after a build: some tests read dist/)
 ```
