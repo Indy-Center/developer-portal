@@ -1,13 +1,14 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import starlightLinksValidator from "starlight-links-validator";
+import starlightLlmsTxt from "starlight-llms-txt";
 
 export default defineConfig({
   site: "https://tech.flyindycenter.com",
   integrations: [
     starlight({
       title: "Indy Center Tech",
-      plugins: [starlightLinksValidator()],
+      plugins: [starlightLinksValidator(), starlightLlmsTxt()],
       customCss: ["./src/styles/theme.css"],
       editLink: {
         baseUrl: "https://github.com/Indy-Center/developer-portal/edit/main/",
