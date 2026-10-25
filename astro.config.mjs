@@ -38,6 +38,11 @@ export default defineConfig({
           items: [{ autogenerate: { directory: "patterns" } }],
         },
         {
+          // Running and recovering the VPS servers. Pages sort by sidebar.order.
+          label: "Operations",
+          items: [{ autogenerate: { directory: "operations" } }],
+        },
+        {
           label: "Working agreements",
           items: [{ autogenerate: { directory: "agreements" } }],
         },

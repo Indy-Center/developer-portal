@@ -28,6 +28,7 @@ A pull request needs green checks and one approval to merge. Merging to `main` d
 - **`src/data/projects.ts`.** The projects registry. The Projects page renders from it; edit the data, not `projects/index.mdx`.
 - **`src/content/docs/development/`.** Getting a machine running the services locally.
 - **`src/content/docs/patterns/`.** How to build something the way existing Workers are built, taken from their real code.
+- **`src/content/docs/operations/`.** Runbooks for running and recovering the VPS servers: backups, recovering one app, rebuilding a server.
 - **`src/content/docs/agreements/`.** What the team has agreed a change needs.
 
 ## Writing
