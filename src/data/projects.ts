@@ -68,7 +68,7 @@ export const projects: Project[] = [
     repo: "https://github.com/Indy-Center/docker-infrastructure",
     status: "active",
     summary:
-      "Traefik for the Vanderbilt VPS — TLS for *.flyindycenter.com with one Let's Encrypt wildcard, routing to every app container on the box — deployed by GitHub Actions. Also holds the example app every VPS-hosted repository copies.",
+      "Traefik and the backup runner for each VPS server — TLS for *.flyindycenter.com with one Let's Encrypt wildcard, routing to every app container on its server — deployed by GitHub Actions to every server. Also holds the example app every VPS-hosted repository copies, and each server's base setup.",
   },
   {
     name: "vnas-discord-bot",

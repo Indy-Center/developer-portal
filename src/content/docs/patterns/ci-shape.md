@@ -7,11 +7,11 @@ sidebar:
 
 A project gets two workflows: `ci.yml` runs checks on every pull request and on `main`, and `build-and-deploy.yml` deploys on every push to `main`. The checks and the wiring between the two workflows are the same everywhere; only the deploy step depends on where the project runs.
 
-| Target                  | Runs                                                        | Deploy step                                              | Status                             |
-| ----------------------- | ----------------------------------------------------------- | -------------------------------------------------------- | ---------------------------------- |
-| Cloudflare Workers      | Anything that can be a Worker                               | `wrangler-action`                                        | Default for new projects           |
-| Vanderbilt VPS (Docker) | Long-running servers and self-hosted apps — Wiki.js, Moodle | rsync + `docker compose up -d` over SSH                  | Active                             |
-| k3s cluster (ArgoCD)    | `controller-tools` only                                     | Push an image to GHCR; ArgoCD Image Updater rolls it out | Being phased out — no new projects |
+| Target               | Runs                                                        | Deploy step                                              | Status                             |
+| -------------------- | ----------------------------------------------------------- | -------------------------------------------------------- | ---------------------------------- |
+| Cloudflare Workers   | Anything that can be a Worker                               | `wrangler-action`                                        | Default for new projects           |
+| VPS servers (Docker) | Long-running servers and self-hosted apps — Wiki.js, Moodle | rsync + `docker compose up -d` over SSH, to one server   | Active                             |
+| k3s cluster (ArgoCD) | `controller-tools` only                                     | Push an image to GHCR; ArgoCD Image Updater rolls it out | Being phased out — no new projects |
 
 Start with a Worker. Reach for the VPS when the thing needs a long-running process or is someone else's software shipped as a container. Don't start anything new on k3s.
 
@@ -102,14 +102,23 @@ SvelteKit and Astro projects need the build step, since `wrangler deploy` upload
 
 ## Deploy to the VPS
 
-An app on the Vanderbilt VPS keeps everything the box needs in a `deploy/` folder: its `docker-compose.yml`, plus any config files it mounts. The deploy copies that folder to `~/apps/<repo name>/` as the `deploy` user and runs Compose there. From [`docker-infrastructure/examples/app/.github/workflows/build-and-deploy.yml`](https://github.com/Indy-Center/docker-infrastructure/blob/main/examples/app/.github/workflows/build-and-deploy.yml), after the SSH setup step:
+An app runs on one of the VPS servers and keeps everything the server needs in a `deploy/` folder: its `docker-compose.yml`, plus any config files it mounts. The deploy copies that folder to `~/apps/<repo name>/` as the `deploy` user and runs Compose there. From [`docker-infrastructure/examples/app/.github/workflows/build-and-deploy.yml`](https://github.com/Indy-Center/docker-infrastructure/blob/main/examples/app/.github/workflows/build-and-deploy.yml):
 
 ```yaml
 env:
-  # The app's directory on the VPS: /home/deploy/apps/<repo name>/.
+  # The server this app runs on, by the prefix of its four organization settings
+  # (ALEXANDRIA_HOST and so on). The example ships with VANDERBILT; new apps go on ALEXANDRIA.
+  SERVER: ALEXANDRIA
+
+# ...then, in the build-and-deploy job:
+env:
+  # The app's directory on the server: /home/deploy/apps/<repo name>/.
   APP: ${{ github.event.repository.name }}
 steps:
-  # ...checkout, then "Set up SSH" from the VANDERBILT_* variables and secrets
+  # ...checkout, then "Set up SSH", which reads the four settings by prefix and fails,
+  # naming each one, if any is missing or this repository has no access to it:
+  #   HOST: ${{ vars[format('{0}_HOST', env.SERVER)] }}
+  #   DEPLOY_SSH_KEY: ${{ secrets[format('{0}_DEPLOY_SSH_KEY', env.SERVER)] }}
 
   # --delete removes files dropped from deploy/; excluded files (.env) are never deleted.
   - run: rsync -rlz --delete --exclude=.env --exclude=.env.example deploy/ "vps:apps/$APP/"
@@ -131,7 +140,7 @@ steps:
       EOF
 ```
 
-Copy the whole workflow rather than this excerpt; it reads the app name from the repository, so it needs no edits. [Deploying to the VPS](/patterns/vps-apps/) covers the rest of what a new app needs: the compose labels that route it through Traefik, DNS and certificates, runtime secrets and backups.
+Copy the whole workflow rather than this excerpt; it reads the app name from the repository, so the only line to edit is `SERVER`. [Deploying to the VPS servers](/patterns/vps-apps/) covers the rest of what a new app needs: the compose labels that route it through Traefik, DNS and certificates, runtime secrets and backups.
 
 > **Why rsync and Compose over SSH.** Traefik's own deploy in `docker-infrastructure` works this way, and it's been through a live cutover. Building images in CI and having the box pull them is the other common shape, and an app that ships its own code may want it later. Most of what runs on the VPS is someone else's image — Wiki.js, Moodle — so there's nothing to build, and copying a folder is the whole deploy.
 
@@ -151,10 +160,10 @@ Nothing in the workflow touches the cluster. ArgoCD Image Updater, configured in
 Each target needs a different kind of deploy credential, and none of them is the running app's own secrets.
 
 - **Workers.** One repository secret, `CLOUDFLARE_WORKERS_API_KEY`: a Cloudflare API token with Workers Scripts:Edit, plus D1:Edit when the project has a database. A maintainer adds it as a repository secret. Runtime secrets such as identity's VATSIM Connect client secret are Worker secrets, set with `npx wrangler secret put`, and never appear in a workflow or in `wrangler.jsonc`.
-- **VPS.** Two organization variables, `VANDERBILT_HOST` and `VANDERBILT_DEPLOY_USER`, and two organization secrets, `VANDERBILT_DEPLOY_SSH_KEY` and `VANDERBILT_KNOWN_HOSTS`, all limited to selected repositories. An org admin adds a new app's repository to all four. The host and user are variables because neither is secret, and a secret's value is masked everywhere it appears in logs. Runtime values are repository secrets named `ENV_<NAME>`, which the deploy writes to the app's `.env` on the box; [Deploying to the VPS](/patterns/vps-apps/#secrets) has the details.
+- **VPS.** Four organization settings per server, named with its prefix: variables `<SERVER>_HOST` and `<SERVER>_DEPLOY_USER`, secrets `<SERVER>_DEPLOY_SSH_KEY` and `<SERVER>_KNOWN_HOSTS`, all limited to selected repositories. The workflow reads the four of the server named in its `SERVER` line, and an org admin gives a new app's repository access to those four. The host and user are variables because neither is secret, and a secret's value is masked everywhere it appears in logs. Runtime values are repository secrets named `ENV_<NAME>`, which the deploy writes to the app's `.env` on the box; [Deploying to the VPS servers](/patterns/vps-apps/#secrets) has the details.
 - **k3s.** The workflow pushes to GHCR with the built-in `GITHUB_TOKEN`. The cluster pulls with a sealed pull secret kept in `infrastructure`.
 
-> **Why the VPS secrets are org-level.** Every app on the VPS deploys as the same `deploy` user with the same key, so one set of secrets means one place to rotate it. They're limited to selected repositories rather than all of them because `deploy` is in the `docker` group, which makes the key root-equivalent on the box.
+> **Why the VPS secrets are org-level.** Every app on a server deploys as that server's `deploy` user with the same key, so one set of settings per server means one place to rotate it. They're limited to selected repositories rather than all of them because `deploy` is in the `docker` group, which makes the key root-equivalent on its server. Each server has its own key, so a leak on one doesn't open another.
 
 ## D1 migrations
 

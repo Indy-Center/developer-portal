@@ -1,27 +1,34 @@
 ---
-title: Deploying to the VPS
-description: How an app gets onto the Vanderbilt VPS behind the shared Traefik — the repository shape, routing labels, DNS and certificates, secrets, backups — and how the box itself is set up.
+title: Deploying to the VPS servers
+description: How an app gets onto one of the VPS servers behind its Traefik — the repository shape, routing labels, DNS and certificates, secrets, backups — and how each server is set up.
 sidebar:
   order: 6
 ---
 
-The Vanderbilt VPS runs the apps that can't be Workers: long-running servers and self-hosted software shipped as containers. One Traefik instance, deployed from [`docker-infrastructure`](https://github.com/Indy-Center/docker-infrastructure), terminates TLS for `*.flyindycenter.com` and routes to every app on the box. Each app lives in its own repository and deploys itself with GitHub Actions. This page is for someone adding an app; [CI shape](/patterns/ci-shape/#deploy-to-the-vps) has the workflow side.
+The VPS servers run the apps that can't be Workers: long-running servers and self-hosted software shipped as containers. Each server runs its own Traefik, deployed from [`docker-infrastructure`](https://github.com/Indy-Center/docker-infrastructure), which terminates TLS for `*.flyindycenter.com` and routes to the apps on that server only. Each app lives in its own repository, runs on one server, and deploys itself there with GitHub Actions; DNS decides which server answers each hostname. This page is for someone adding an app; [CI shape](/patterns/ci-shape/#deploy-to-the-vps) has the workflow side.
+
+There are two servers today, each known by the prefix of its deploy settings:
+
+| Server         | What it is                                    | For                                               |
+| -------------- | --------------------------------------------- | ------------------------------------------------- |
+| **ALEXANDRIA** | A Hostinger VPS, `alexandria.flyzid.org`      | Every new app, and every existing app as it moves |
+| **VANDERBILT** | The DigitalOcean droplet the setup started on | The apps not yet moved. It closes once they have  |
 
 **Status.** Traefik and the pipeline are live and the wiki is routed through them. The first app deployed with the [`examples/app/`](https://github.com/Indy-Center/docker-infrastructure/tree/main/examples/app) workflows is [`vnas-discord-bot`](https://github.com/Indy-Center/vnas-discord-bot), on 2026-09-27; what it turned up is folded in below.
 
 ## How the box is set up
 
-| Piece           | Where                                                                                                                                                    |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Traefik         | `/home/deploy/traefik/`, deployed from `docker-infrastructure`'s `traefik/` folder                                                                       |
-| Apps            | `/home/deploy/apps/<repo name>/`, one directory per app                                                                                                  |
-| Backup runner   | `/home/deploy/backup-runner/`, deployed from `docker-infrastructure`; see [Backups](/operations/backups/)                                                |
-| Backup staging  | `/home/deploy/backups/<app>/`, emptied after each backup                                                                                                 |
-| Shared network  | `traefik-shared`; every compose project uses it as `external: true`                                                                                      |
-| Certificate     | One Let's Encrypt wildcard, `flyindycenter.com` + `*.flyindycenter.com`, renewed by Traefik                                                              |
-| DNS             | `*.flyindycenter.com` points at the VPS, DNS-only                                                                                                        |
-| Docker          | Docker's own apt packages, held, on a server set up from `docker-infrastructure`'s `host/`. The Canonical snap, held, on the DigitalOcean droplet        |
-| Off-box backups | Cloudflare R2 bucket `indy-center-backups`, encrypted, in folders by how long each copy is kept, with a bucket lock; see [Backups](/operations/backups/) |
+| Piece           | Where                                                                                                                                                                |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Traefik         | `/home/deploy/traefik/`, deployed from `docker-infrastructure`'s `traefik/` folder                                                                                   |
+| Apps            | `/home/deploy/apps/<repo name>/`, one directory per app                                                                                                              |
+| Backup runner   | `/home/deploy/backup-runner/`, deployed from `docker-infrastructure`; see [Backups](/operations/backups/)                                                            |
+| Backup staging  | `/home/deploy/backups/<app>/`, emptied after each backup                                                                                                             |
+| Shared network  | `traefik-shared`; every compose project uses it as `external: true`                                                                                                  |
+| Certificate     | One Let's Encrypt wildcard, `flyindycenter.com` + `*.flyindycenter.com`, renewed by Traefik                                                                          |
+| DNS             | `*.flyindycenter.com` points at the droplet, DNS-only. Each app on ALEXANDRIA has its own record; see [Hostname, DNS and certificate](#hostname-dns-and-certificate) |
+| Docker          | Docker's own apt packages, held, on a server set up from `docker-infrastructure`'s `host/`. The Canonical snap, held, on the DigitalOcean droplet                    |
+| Off-box backups | Cloudflare R2 bucket `indy-center-backups`, encrypted, in folders by how long each copy is kept, with a bucket lock; see [Backups](/operations/backups/)             |
 
 Deploys run as the `deploy` user, which is in the `docker` group. Traefik only routes containers labelled `traefik.enable=true`, redirects HTTP to HTTPS, and serves the wildcard certificate to every router with `tls=true`; apps never request their own.
 
@@ -121,7 +128,17 @@ An app with no web surface — a bot that only makes outbound calls, like `vnas-
 
 ### Hostname, DNS and certificate
 
-Any `<name>.flyindycenter.com` already works. The wildcard DNS record sends it to the VPS and the wildcard certificate covers it, so a new app needs no DNS change and no certificate request.
+Every server's Traefik serves the same wildcard certificate, so any `<name>.flyindycenter.com` is covered on every server with no certificate request. DNS is what decides which server answers.
+
+**An app on ALEXANDRIA needs its own DNS record.** The `*.flyindycenter.com` wildcard record points at the droplet, so a hostname without a record of its own reaches the droplet's Traefik, which has no router for it and answers `404`. Before the first deploy, add the record by hand in Cloudflare, **DNS → Records → Add record**:
+
+| Type  | Name     | Target                  | Proxy status |
+| ----- | -------- | ----------------------- | ------------ |
+| CNAME | `<name>` | `alexandria.flyzid.org` | DNS only     |
+
+A CNAME to the server's own name rather than an A record to its IP, so an IP change is one record to fix, not one per app. DNS-only, because Traefik serves the certificate itself. `social` and `moodle` were made this way. An app whose first sign-up becomes its owner, like Postiz, gets its record only after that sign-up, which is done through a hosts-file line pointing at the server, so nobody else reaches it first. Don't change or delete a record another app already uses; moving an app between servers switches its record on purpose, as one step of the move.
+
+The wildcard stays on the droplet while apps move, and is deleted with the droplet's records once they all have. A hostname with no record then fails to resolve, instead of quietly reaching whichever server the wildcard happens to point at.
 
 An explicit DNS record wins over the wildcard. If one exists for the hostname — left over from an old deployment, or proxied through Cloudflare — it decides where traffic goes. Check **DNS → Records** in Cloudflare before assuming the wildcard applies.
 
@@ -158,8 +175,19 @@ Considered, not chosen: having the Worker pass the path through itself (`return 
 
 Two kinds, kept apart:
 
-- **Deploy credentials.** The `VANDERBILT_*` organization variables (`VANDERBILT_HOST`, `VANDERBILT_DEPLOY_USER`) and secrets (`VANDERBILT_DEPLOY_SSH_KEY`, `VANDERBILT_KNOWN_HOSTS`). All four are limited to selected repositories, so an org admin adds the new repository to each of them before its first deploy: **Org Settings → Secrets and variables → Actions → (secret) → Repository access**.
+- **Deploy credentials.** Four organization settings per server, named with its prefix: variables `<SERVER>_HOST` and `<SERVER>_DEPLOY_USER`, secrets `<SERVER>_DEPLOY_SSH_KEY` and `<SERVER>_KNOWN_HOSTS` (`ALEXANDRIA_HOST` and so on). The workflow names its server once, at the top, and reads the four by that prefix. Its **Set up SSH** step checks all four are there before anything reaches a server, and fails naming each one it can't see. All of them are limited to selected repositories, so an org admin gives the new repository the four of its server before its first deploy: **Org Settings → Secrets and variables → Actions → (setting) → Repository access**.
 - **Runtime values.** Database passwords, API tokens, and any setting the app reads from its environment. Each one is its own repository secret named `ENV_<NAME>`, or a repository variable with the same prefix when it isn't secret. Anyone who administers the app's repository sets them under **Settings → Secrets and variables → Actions**; nobody needs SSH access to the box.
+
+The server, from the top of `build-and-deploy.yml`:
+
+```yaml
+env:
+  # The server this app runs on, by the prefix of its four organization settings.
+  # The example ships with VANDERBILT; a new app goes on ALEXANDRIA.
+  SERVER: ALEXANDRIA
+```
+
+Moving the app to another server starts with this line, and the four settings of the new server.
 
 The **Write .env** step in `build-and-deploy.yml` lists each setting by name, mapped from wherever it's stored:
 
@@ -186,11 +214,13 @@ DISCORD_TOKEN='the value'   # single-quoted, so Compose reads $ and # literally
 - **Where values are kept.** GitHub never shows a secret again after it's saved; keep the source copy in 1Password.
 - **Secret or variable.** Only real secrets go in secrets. GitHub replaces every secret's value with `***` anywhere it appears in a log, so a secret like `false` or `5` masks those strings in every step's output and makes failures hard to read. Flags, numbers and log levels are `ENV_*` variables.
 
-Considered, not chosen: a hand-made `.env` on the box that the deploy never touches. It keeps runtime secrets out of GitHub, but every change needs someone with SSH access, and a rebuilt box comes back without them. A repository with the `VANDERBILT_*` credentials can already run anything on the box as `deploy`, so keeping its runtime secrets out of GitHub protects little. One `ENV_FILE` secret holding the whole file was also considered; it means re-pasting every value to change one.
+Considered, not chosen: a hand-made `.env` on the box that the deploy never touches. It keeps runtime secrets out of GitHub, but every change needs someone with SSH access, and a rebuilt box comes back without them. A repository with a server's deploy credentials can already run anything on that server as `deploy`, so keeping its runtime secrets out of GitHub protects little. One `ENV_FILE` secret holding the whole file was also considered; it means re-pasting every value to change one.
 
 Considered, not chosen: collecting every `ENV_*` secret automatically with `toJSON(secrets)`, so a new setting needs no workflow change. That hands every secret the repository can see — the deploy key included — to a step that sends data to another host, and GitHub's malicious-workflow detection held the first app's deploy for exactly that. Listing settings by name costs one line per setting and means the step sees only what the app needs.
 
-Traefik's Cloudflare token and rclone's R2 credentials are the exception: they stay in files on the box, because Traefik and rclone need them between deploys, not only during one.
+The secrets each server needs for itself arrive the same way, from `docker-infrastructure`'s own repository secrets, written by its deploy to every server on every run. Traefik's Cloudflare DNS token is the repository secret `CF_DNS_API_TOKEN`, one token for every server, written to `/home/deploy/traefik/.env` (mode 600) before Traefik starts; Traefik reads it at every renewal. The backup runner's R2 key, encryption key and webhooks go to `~/backup-runner/secrets/` the same way ([Backups](/operations/backups/#secrets)). The deploy owns those files, so don't edit them on a server, and a new or rebuilt server gets them from its first deploy with no step by hand.
+
+To rotate Traefik's token: roll it in Cloudflare, update the 1Password item "Traefik — Cloudflare DNS token" and the secret, then run **Build and Deploy** in `docker-infrastructure` by hand. Anyone who can change that repository's workflows can read the token, but it can only edit DNS on `flyindycenter.com`, and Cloudflare accepts it only from the servers' IPs, so a copy is no use anywhere else.
 
 ### First deploy
 
@@ -198,7 +228,7 @@ Run **Actions → Build and Deploy → Run workflow**, or merge to `main`. Then 
 
 ```sh
 curl -sS -o /dev/null -w '%{http_code}\n' https://<name>.flyindycenter.com/
-# on the VPS
+# on the app's server
 cd /home/deploy/apps/<repo name> && docker compose ps && docker compose logs --tail 50
 ```
 
@@ -208,13 +238,14 @@ A `404` from Traefik means it didn't pick up the router. Check the labels and th
 
 An app is backed up by shipping `deploy/backup.sh` and `deploy/restore.sh`, or an empty `deploy/no-backup` if it keeps nothing; an app with neither raises an alert every night. [Backups](/operations/backups/#what-an-app-ships) has the contract and the schedule, and [Recover one app](/operations/recover-one-app/) the way back.
 
-## Operating the box
+## Operating the servers
 
-- **Traefik changes.** A pull request to `docker-infrastructure`. Merging deploys it. Changes under `traefik/dynamic/` apply without a restart; changes to `traefik.yml` or its compose file recreate the container, which interrupts every app for a couple of seconds.
-- **Dashboard.** Read-only, on the VPS's loopback address only. Open it through an SSH tunnel with an admin account; the `deploy` key can't forward ports. `ssh -L 8080:localhost:8080 <admin>@<vps>`, then `http://localhost:8080/dashboard/`.
+- **Traefik changes.** A pull request to `docker-infrastructure`. Merging deploys it to every server in its list. Changes under `traefik/dynamic/` apply without a restart; changes to `traefik.yml` or its compose file recreate the container, which interrupts every app for a couple of seconds.
+- **Dashboard.** One per server, read-only, on that server's loopback address only. Open it through an SSH tunnel with an admin account; the `deploy` key can't forward ports. `ssh -L 8080:localhost:8080 <admin>@<server>`, then `http://localhost:8080/dashboard/`.
 - **Logs.** `docker logs -f traefik` for routing and certificates; `docker compose logs -f` in an app's directory for the app.
 - **Docker updates.** Held. Upgrade by hand in a quiet period: `snap refresh docker` on the droplet, which restarts every container; on a server set up from `host/`, as [its README](https://github.com/Indy-Center/docker-infrastructure/blob/main/host/README.md) says.
-- **Certificate renewal.** Automatic. Traefik renews 30 days before expiry using the Cloudflare token in `/home/deploy/traefik/.env`. The token is locked to the VPS's IP, so if the box ever changes IP, renewals fail — loudly in Traefik's logs, with a month to fix it.
+- **Certificate renewal.** Automatic, on each server. Traefik renews 30 days before expiry using the Cloudflare token the deploy writes to `/home/deploy/traefik/.env`. The token is locked to the servers' IPs, so if a server ever changes IP, its renewals fail — loudly in Traefik's logs, with a month to fix it: add the new IP to the token's allow-list in Cloudflare.
+- **Adding a server.** Ordering it, its base setup, its four settings and its place in `docker-infrastructure`'s server list are the Rebuild the VPS runbook's job, in Operations, rather than this page's.
 
 ## Things that bit us
 
