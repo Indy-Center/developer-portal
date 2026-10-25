@@ -11,19 +11,21 @@ The Vanderbilt VPS runs the apps that can't be Workers: long-running servers and
 
 ## How the box is set up
 
-| Piece           | Where                                                                                       |
-| --------------- | ------------------------------------------------------------------------------------------- |
-| Traefik         | `/home/deploy/traefik/`, deployed from `docker-infrastructure`'s `traefik/` folder          |
-| Apps            | `/home/deploy/apps/<repo name>/`, one directory per app                                     |
-| Backup staging  | `/home/deploy/backups/<app>/`                                                               |
-| Shared network  | `traefik-shared`, created once by hand; every compose project uses it as `external: true`   |
-| Certificate     | One Let's Encrypt wildcard, `flyindycenter.com` + `*.flyindycenter.com`, renewed by Traefik |
-| DNS             | `*.flyindycenter.com` points at the VPS, DNS-only                                           |
-| Off-box backups | Cloudflare R2 bucket `vanderbelt-backups`, one prefix per app, 60-day lifecycle             |
+| Piece           | Where                                                                                                                                                    |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Traefik         | `/home/deploy/traefik/`, deployed from `docker-infrastructure`'s `traefik/` folder                                                                       |
+| Apps            | `/home/deploy/apps/<repo name>/`, one directory per app                                                                                                  |
+| Backup runner   | `/home/deploy/backup-runner/`, deployed from `docker-infrastructure`; see [Backups](/operations/backups/)                                                |
+| Backup staging  | `/home/deploy/backups/<app>/`, emptied after each backup                                                                                                 |
+| Shared network  | `traefik-shared`; every compose project uses it as `external: true`                                                                                      |
+| Certificate     | One Let's Encrypt wildcard, `flyindycenter.com` + `*.flyindycenter.com`, renewed by Traefik                                                              |
+| DNS             | `*.flyindycenter.com` points at the VPS, DNS-only                                                                                                        |
+| Docker          | Docker's own apt packages, held, on a server set up from `docker-infrastructure`'s `host/`. The Canonical snap, held, on the DigitalOcean droplet        |
+| Off-box backups | Cloudflare R2 bucket `indy-center-backups`, encrypted, in folders by how long each copy is kept, with a bucket lock; see [Backups](/operations/backups/) |
 
 Deploys run as the `deploy` user, which is in the `docker` group. Traefik only routes containers labelled `traefik.enable=true`, redirects HTTP to HTTPS, and serves the wildcard certificate to every router with `tls=true`; apps never request their own.
 
-> **Why everything is under `/home/deploy`.** Docker on this box is the Canonical snap. Snap confinement stops both the `docker` CLI and the daemon from reading most paths outside `/home`, so a compose file in `/opt` fails with "no such file or directory" even though the file is there. Considered, not chosen: replacing the snap with Docker's own packages. That means copying every container's data to a new location with the wiki down, and moving the paths fixed the problem without it. The snap's automatic updates are held (`snap refresh --hold docker`), because each one restarts every container.
+> **Why everything is under `/home/deploy`.** Docker on the droplet is the Canonical snap. Snap confinement stops both the `docker` CLI and the daemon from reading most paths outside `/home`, so a compose file in `/opt` fails with "no such file or directory" even though the file is there. Considered, not chosen: replacing the snap with Docker's own packages on the droplet. That means copying every container's data to a new location with the wiki down, and moving the paths fixed the problem without it. A new server gets Docker's apt packages instead, and keeps the same `/home/deploy` layout so apps don't care which server they're on. Either way Docker's updates are held, because each one restarts every container.
 
 ## Adding an app
 
@@ -204,23 +206,14 @@ A `404` from Traefik means it didn't pick up the router. Check the labels and th
 
 ### Backups
 
-Each app backs itself up. Dumps are staged in `~/backups/<app>/` and pushed to `r2:vanderbelt-backups/<app>/` with rclone, whose R2 credentials live in the `deploy` user's rclone config on the box. The bucket's lifecycle rule deletes objects after 60 days.
-
-The per-app backup workflow — a scheduled job that dumps the app's database over SSH — is being defined as the wiki moves onto this setup. Until then, a manual backup looks like this:
-
-```sh
-F=/home/deploy/backups/<app>/<app>-$(date -u +%Y%m%dT%H%MZ).tar.gz
-sudo -u deploy mkdir -p /home/deploy/backups/<app>
-tar czf "$F" -C <path to the data> . && chown deploy "$F"
-sudo -u deploy rclone copy "$F" r2:vanderbelt-backups/<app>/
-```
+An app is backed up by shipping `deploy/backup.sh` and `deploy/restore.sh`, or an empty `deploy/no-backup` if it keeps nothing; an app with neither raises an alert every night. [Backups](/operations/backups/#what-an-app-ships) has the contract and the schedule, and [Recover one app](/operations/recover-one-app/) the way back.
 
 ## Operating the box
 
 - **Traefik changes.** A pull request to `docker-infrastructure`. Merging deploys it. Changes under `traefik/dynamic/` apply without a restart; changes to `traefik.yml` or its compose file recreate the container, which interrupts every app for a couple of seconds.
 - **Dashboard.** Read-only, on the VPS's loopback address only. Open it through an SSH tunnel with an admin account; the `deploy` key can't forward ports. `ssh -L 8080:localhost:8080 <admin>@<vps>`, then `http://localhost:8080/dashboard/`.
 - **Logs.** `docker logs -f traefik` for routing and certificates; `docker compose logs -f` in an app's directory for the app.
-- **Docker updates.** Held. Run `snap refresh docker` by hand in a quiet period; it restarts every container.
+- **Docker updates.** Held. Upgrade by hand in a quiet period: `snap refresh docker` on the droplet, which restarts every container; on a server set up from `host/`, as [its README](https://github.com/Indy-Center/docker-infrastructure/blob/main/host/README.md) says.
 - **Certificate renewal.** Automatic. Traefik renews 30 days before expiry using the Cloudflare token in `/home/deploy/traefik/.env`. The token is locked to the VPS's IP, so if the box ever changes IP, renewals fail — loudly in Traefik's logs, with a month to fix it.
 
 ## Things that bit us
@@ -235,10 +228,6 @@ Each of these happened during the setup.
 - **Private GHCR package.** The first app deploy failed at `docker compose pull` with `unauthorized`: the image was pushed fine, but GHCR had made the new package private. Making it public fixed it; see [Apps that build their own image](#apps-that-build-their-own-image).
 - **Short values as secrets.** The same first deploy's logs had `sleep ***` and hashes full of `***`, because a few settings like `false` were stored as secrets. They belong in variables.
 - **"This workflow file may be malicious."** A later deploy was held for approval because the Write .env step passed `toJSON(secrets)` to a step that uses SSH. The step now lists settings by name. If a workflow is held anyway, check that secrets leave the runner only through `ssh vps` before clicking **Approve and run**.
-
-## Open questions
-
-- **Backup workflow shape.** Lean: a scheduled workflow per app that reuses the `VANDERBILT_*` credentials and runs a dump script specific to the app's database. The wiki's, with SQLite, comes first and becomes the template.
 
 ## Out of scope
 
