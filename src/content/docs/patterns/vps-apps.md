@@ -183,7 +183,6 @@ The server, from the top of `build-and-deploy.yml`:
 ```yaml
 env:
   # The server this app runs on, by the prefix of its four organization settings.
-  # The example ships with VANDERBILT; a new app goes on ALEXANDRIA.
   SERVER: ALEXANDRIA
 ```
 

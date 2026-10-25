@@ -107,7 +107,7 @@ An app runs on one of the VPS servers and keeps everything the server needs in a
 ```yaml
 env:
   # The server this app runs on, by the prefix of its four organization settings
-  # (ALEXANDRIA_HOST and so on). The example ships with VANDERBILT; new apps go on ALEXANDRIA.
+  # (ALEXANDRIA_HOST and so on).
   SERVER: ALEXANDRIA
 
 # ...then, in the build-and-deploy job:
