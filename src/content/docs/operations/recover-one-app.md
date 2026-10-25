@@ -156,11 +156,27 @@ You should see `Put back the data from before the interrupted restore.`
 
 ## The wiki
 
-**Status.** The wiki doesn't run on the deploy pipeline yet, so nothing here applies to it until it moves; until then its copy is the one taken by hand before the move started. This section describes the recipe being built for that move.
+**Status.** The wiki doesn't run on the deploy pipeline yet, so nothing here applies to it until it moves; until then its copy is the one taken by hand before the move started. This section describes the recipe the wiki moves with.
 
-A wiki backup is one archive holding its SQLite database, `database.sqlite`, and its `content` folder: everything the wiki is, including user accounts, the OAuth2 sign-in settings and the session keys. It's a single file to restore, but it's not something to leave lying around: it holds password hashes and the sign-in client secret.
+A wiki backup is one compressed archive, `wiki.tar.gz`, holding its SQLite database, `database.sqlite`, and its `content` folder. The database is everything the wiki is: pages, uploaded files, user accounts, the OAuth2 sign-in settings and the session keys. It holds password hashes and the sign-in client secret, so don't leave a decrypted copy lying around. The `/wiki/backups` volume, where the Local File System storage target writes its copy of the pages, isn't in the backup on purpose: it's a copy of what's in the database.
 
-`restore.sh` checks the archive before stopping anything, then stops the wiki, swaps the data in, starts it and waits until it answers. On any failure after the stop, it puts the old data back and starts the wiki on it.
+Before stopping anything, `restore.sh` unpacks the archive and checks the database: SQLite's integrity check, and a `pages` table, so a file that isn't a Wiki.js database is refused. You should see:
+
+```
+Its database passed SQLite's integrity check and holds <n> pages
+```
+
+Then it stops the wiki, sets its data aside, swaps the archive's in, starts it, and waits up to 5 minutes for it to answer `/healthz`. A wiki that comes up on its setup page instead — it found no settings in the database, and would offer setup to anyone who opens the site — or that keeps restarting counts as failed. On any failure after the stop, it puts the earlier data back and starts the wiki on it, and says so. You should see `Restored wiki.tar.gz` when it worked.
+
+**If a restore was interrupted**, the earlier data stays in the volumes at `/wiki/data/.restore-old` and `/wiki/data/content/.restore-old`, and the next restore refuses to run until it's been put back:
+
+```sh
+cd ~/apps/wiki && bash restore.sh --undo
+```
+
+You should see `Put back the data from before the interrupted restore.`, or `Nothing to undo: no data set aside by an interrupted restore.` if there was nothing to put back.
+
+`restore.sh` also takes a bare SQLite copy of the database, such as the one taken by hand before the move, instead of an archive. Run it from `~/apps/wiki` as `bash restore.sh <file>.sqlite`. The `content` folder then comes back empty.
 
 Restore with the image version the backup was taken on. Wiki.js migrates its database on start and can't go back, so a backup restored into a newer version is upgraded for good. The image is pinned in the wiki's `deploy/docker-compose.yml`; take `backups now wiki` before changing it.
 

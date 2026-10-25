@@ -65,7 +65,7 @@ The runner never deletes anything; R2's lifecycle rules do. Its key can write to
 | `indy-larry`       | `indy-larry-state.tar.gz`: the bot's state files                                                        | Nightly            |
 | `postiz`           | `postiz.tar`: its three databases and the uploads volume                                                | Nightly            |
 | `moodle`           | `moodle.tar`: the database and `moodledata`, without the caches                                         | Nightly            |
-| `wiki`             | Not yet. Once it moves onto the pipeline, its SQLite database and `content` folder in one archive       | Nightly, from then |
+| `wiki`             | Not yet. Once it moves onto the pipeline, `wiki.tar.gz`: the SQLite database and the `content` folder   | Nightly, from then |
 
 Each recipe takes a consistent copy while its app keeps running, and each app's own CI proves the round trip: add data, back up, wipe, restore, check the data is back.
 
