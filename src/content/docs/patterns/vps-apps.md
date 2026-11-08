@@ -130,13 +130,22 @@ An app with no web surface — a bot that only makes outbound calls, like `vnas-
 
 Every server's Traefik serves the same wildcard certificate, so any `<name>.flyindycenter.com` is covered on every server with no certificate request. DNS is what decides which server answers.
 
-**An app on ALEXANDRIA needs its own DNS record.** The `*.flyindycenter.com` wildcard record points at the droplet, so a hostname without a record of its own reaches the droplet's Traefik, which has no router for it and answers `404`. Before the first deploy, add the record by hand in Cloudflare, **DNS → Records → Add record**:
+**An app on ALEXANDRIA needs its own DNS record.** The `*.flyindycenter.com` wildcard record points at the droplet, so a hostname without a record of its own reaches the droplet's Traefik, which has no router for it and answers `404`. The deploy makes that record for you. The example workflow's **DNS record** step, after `docker compose up -d`, runs `~/.local/bin/app-dns --app <app>` on the server. It reads every hostname in the app's Traefik `Host()` rules, and for each one, in Cloudflare:
 
-| Type  | Name     | Target                  | Proxy status |
-| ----- | -------- | ----------------------- | ------------ |
-| CNAME | `<name>` | `alexandria.flyzid.org` | DNS only     |
+| The hostname has                                 | The DNS record step                                                                |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| No record of its own (only the wildcard answers) | Creates a DNS-only CNAME to the server's own name, such as `alexandria.flyzid.org` |
+| A CNAME to this server already                   | Does nothing                                                                       |
+| Any other record: a CNAME elsewhere, an A record | Warns, naming where it points, and leaves it alone; the step still passes          |
 
-A CNAME to the server's own name rather than an A record to its IP, so an IP change is one record to fix, not one per app. DNS-only, because Traefik serves the certificate itself. `social` and `moodle` were made this way. An app whose first sign-up becomes its owner, like Postiz, gets its record only after that sign-up, which is done through a hosts-file line pointing at the server, so nobody else reaches it first. Don't change or delete a record another app already uses; moving an app between servers switches its record on purpose, as one step of the move.
+A CNAME to the server's own name rather than an A record to its IP, so an IP change is one record to fix, not one per app. DNS-only, because Traefik serves the certificate itself. The step runs on the server because it uses Traefik's Cloudflare token, which Cloudflare accepts only from the servers' IPs. A Cloudflare error fails only this step, since the app is already up. The details are in [docker-infrastructure's README](https://github.com/Indy-Center/docker-infrastructure#the-apps-dns-record).
+
+The step never changes or deletes a record, so two cases are still done by hand in Cloudflare, **DNS → Records**:
+
+- **Moving an app between servers.** Its record already points at the old server, so the step only warns. Switching it is one step of the move, done on purpose. Once the record points at the new server, the step does nothing.
+- **An app whose first sign-up becomes its owner**, like Postiz. Leave the **DNS record** step out until its owner has signed up, through a hosts-file line pointing at the server, so nobody else reaches it first. Then add the step, or make the record by hand.
+
+`social` and `moodle` got their records by hand, before the step existed.
 
 The wildcard stays on the droplet while apps move, and is deleted with the droplet's records once they all have. A hostname with no record then fails to resolve, instead of quietly reaching whichever server the wildcard happens to point at.
 

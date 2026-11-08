@@ -138,6 +138,11 @@ steps:
         exit 1
       fi
       EOF
+
+  # Gives each hostname in the app's Traefik Host() rules a DNS-only CNAME to this server,
+  # if it has no record of its own. It never changes an existing record.
+  - name: DNS record
+    run: ssh vps .local/bin/app-dns --app "$APP"
 ```
 
 Copy the whole workflow rather than this excerpt; it reads the app name from the repository, so the only line to edit is `SERVER`. [Deploying to the VPS servers](/patterns/vps-apps/) covers the rest of what a new app needs: the compose labels that route it through Traefik, DNS and certificates, runtime secrets and backups.
