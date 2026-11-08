@@ -12,37 +12,48 @@ The CMS (`cms.flyindycenter.com`, the `payload` repo) serves a few lists to anyo
 
 Each answers a JSON list. Read them from a server, not from browser JavaScript; see [CORS](#cors) below.
 
+Considered, not chosen: opening Payload's own `/api/positions` to the public. It publishes the storage fields we expect to rename, and Payload's query, depth and GraphQL with them; a typed route under `/api/public/v1/` can stay put while the storage changes.
+
 ## The rules
 
 Both routes answer the same way:
 
 - **No token.** No `Authorization` header, no cookie.
 - **GET only.** Any other method gets a 404.
-- **Cached five minutes.** A good answer carries `Cache-Control: public, max-age=300`. The CMS has no ETags yet, so cache for five minutes on your side rather than polling.
-- **A 500 is never stale.** When the CMS can't build a list it answers 500 with `{ "errors": [{ "message": "Could not build positions." }] }` and `Cache-Control: no-store`. It never serves an old copy instead, so keep your own last good copy and fall back to it.
+- **Cached five minutes.** A good answer carries `Cache-Control: public, max-age=300`.
+- **A 500 is never stale.** A list the CMS can't build answers 500 with `{ "errors": [{ "message": "Could not build positions." }] }` and `Cache-Control: no-store`.
 - **Order isn't part of the contract.** Positions come by callsign and credentials up the ladder today; sort them yourself if you need an order.
+
+The CMS has no ETags yet, so cache for five minutes on your side rather than polling. It never answers an error with an old copy either; keeping the last good one is your job, and the fallback below is the whole of it.
 
 ```ts
 // Server-side only: the CMS sends no Access-Control-Allow-Origin.
-let lastGood: Position[] = [];
+type Position = { callsign: string; frequency: number /* … see below */ };
+
+let lastGood: Position[] | undefined;
 
 export async function positions(): Promise<Position[]> {
-  const res = await fetch(
-    "https://cms.flyindycenter.com/api/public/v1/positions",
-  );
-  // A 500 means the CMS couldn't build the list; it won't send an old one,
-  // so serve the last copy we had.
-  if (!res.ok) return lastGood;
-  lastGood = await res.json();
-  return lastGood;
+  try {
+    const res = await fetch(
+      "https://cms.flyindycenter.com/api/public/v1/positions",
+    );
+    // A 500 means the CMS couldn't build the list; it won't send an old one.
+    if (!res.ok) throw new Error(`CMS answered ${res.status}`);
+    lastGood = await res.json();
+  } catch (error) {
+    // No copy yet (the app just started): fail rather than serve an empty
+    // list, which would read as "ZID has no positions".
+    if (!lastGood) throw error;
+  }
+  return lastGood!;
 }
 ```
 
 ### CORS
 
-Browsers on another origin can't read these routes. Responses carry the `Vary`, `Access-Control-Allow-Headers` and `Access-Control-Allow-Methods` headers that Next.js and Payload add to every response, but no `Access-Control-Allow-Origin`, so a cross-origin `fetch` fails in the browser. That's on purpose: an app that fetches from the browser by mistake fails loudly in development instead of quietly loading the CMS from every visitor's page.
+Browsers on another origin can't read these routes. Responses carry the `Vary`, `Access-Control-Allow-Headers` and `Access-Control-Allow-Methods` headers that Next.js and Payload add, but no `Access-Control-Allow-Origin`, so a cross-origin `fetch` fails in the browser. That's on purpose: an app that fetches from the browser by mistake fails loudly in development instead of quietly loading the CMS from every visitor's page.
 
-> CORS only governs browser JavaScript on another origin. It isn't access control — `curl` reads these routes either way — so turning it on would buy nothing but browser traffic. An app that needs a browser fetch should say so; it's one of the things that would reopen the CMS's caching.
+> CORS only governs browser JavaScript on another origin. It isn't access control — `curl` reads these routes either way — so turning it on would buy nothing but browser traffic. An app that needs a browser fetch should say so on the `payload` repo: every visitor's browser would then call the CMS, and that would need caching in front of it first.
 
 ## Positions
 
@@ -118,12 +129,10 @@ Trimmed from the live list:
 
 v1 grows without breaking you, as long as you ignore fields you don't know: adding a field never needs a new version. Anything else does — removing, renaming or retyping a field, changing its units or meaning, or changing which rows are included. That comes as `/api/public/v2/…`, and v1 keeps being served until every app reading it has moved.
 
-## Being counted as a reader
+## Reader sign-up
 
 The CMS only knows who reads v1 from its own README. When your app starts reading a route, open a pull request on `payload` adding it to that route's line under **HTTP surface** in the README (both say "No readers yet" today). v1 isn't retired until every app listed there has moved off it.
 
-Considered, not chosen: opening Payload's own `/api/positions` to the public. It publishes the storage fields we expect to rename, and Payload's query, depth and GraphQL with them; a typed route under `/api/public/v1/` can stay put while the storage changes.
-
 ## Out of scope
 
-Not public, and not coming here: who holds which credential, the course list, partners, the courseware catalogue and task tree, lesson plans, scenarios and teacher resources. Each is read by the app that owns it with its own token.
+Not public, and not coming here: who holds which credential, the course list, partners, the courseware catalogue and task tree, lesson plans, scenarios and teacher resources. The CMS serves some of them to one app each, behind that app's own token; who holds which credential isn't in the CMS at all.
