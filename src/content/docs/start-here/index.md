@@ -15,6 +15,6 @@ Read these in order:
 - [Access](/start-here/access/) — the three accounts, what each unblocks, and who grants them.
 - [First contribution](/start-here/first-contribution/) — from a one-line doc fix to a code change.
 
-After those, [Development](/development/setup/) gets a machine running the services locally, [Patterns](/patterns/auth/) shows how existing Workers are built so a new one can match them, and [Working agreements](/agreements/definition-of-done/) covers what a change needs before it merges.
+After those, [Development](/development/setup/) gets a machine running the services locally, [Patterns](/patterns/auth/) shows how existing Workers are built so a new one can match them, [Design](/design/) covers how an app should look and behave, and [Working agreements](/agreements/definition-of-done/) covers what a change needs before it merges.
 
 [Projects](/projects/) lists every repository and whether it's still alive.

@@ -43,6 +43,10 @@ export default defineConfig({
           items: [{ autogenerate: { directory: "operations" } }],
         },
         {
+          label: "Design",
+          items: [{ autogenerate: { directory: "design" } }],
+        },
+        {
           label: "Working agreements",
           items: [{ autogenerate: { directory: "agreements" } }],
         },

@@ -29,6 +29,7 @@ A pull request needs green checks and one approval to merge. Merging to `main` d
 - **`src/content/docs/development/`.** Getting a machine running the services locally.
 - **`src/content/docs/patterns/`.** How to build something the way existing Workers are built, taken from their real code.
 - **`src/content/docs/operations/`.** Runbooks for running and recovering the VPS servers: backups, recovering one app, rebuilding a server.
+- **`src/content/docs/design/`.** Indy Centerline's rules for how an app looks and behaves. Component detail belongs on centerline.flyindycenter.com, and color and type values in the brand guide; link to them.
 - **`src/content/docs/agreements/`.** What the team has agreed a change needs.
 
 ## Writing
