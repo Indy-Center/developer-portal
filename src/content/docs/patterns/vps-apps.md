@@ -253,7 +253,7 @@ An app is backed up by shipping `deploy/backup.sh` and `deploy/restore.sh`, or a
 - **Logs.** `docker logs -f traefik` for routing and certificates; `docker compose logs -f` in an app's directory for the app.
 - **Docker updates.** Held. Upgrade by hand in a quiet period: `snap refresh docker` on the droplet, which restarts every container; on a server set up from `host/`, as [its README](https://github.com/Indy-Center/docker-infrastructure/blob/main/host/README.md) says.
 - **Certificate renewal.** Automatic, on each server. Traefik renews 30 days before expiry using the Cloudflare token the deploy writes to `/home/deploy/traefik/.env`. The token is locked to the servers' IPs, so if a server ever changes IP, its renewals fail — loudly in Traefik's logs, with a month to fix it: add the new IP to the token's allow-list in Cloudflare.
-- **Adding a server.** Ordering it, its base setup, its four settings and its place in `docker-infrastructure`'s server list are the Rebuild the VPS runbook's job, in Operations, rather than this page's.
+- **Adding a server.** Ordering it, its base setup, its four settings and its place in `docker-infrastructure`'s server list are [Rebuild the VPS](/operations/rebuild-the-vps/)'s job, rather than this page's.
 
 ## Things that bit us
 
