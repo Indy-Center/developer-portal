@@ -143,7 +143,7 @@ A CNAME to the server's own name rather than an A record to its IP, so an IP cha
 The step never changes or deletes a record, so two cases are still done by hand in Cloudflare, **DNS → Records**:
 
 - **Moving an app between servers.** Its record already points at the old server, so the step only warns. Switching it is one step of the move, done on purpose. Once the record points at the new server, the step does nothing.
-- **An app whose first sign-up becomes its owner**, like Postiz. Leave the **DNS record** step out until its owner has signed up, through a hosts-file line pointing at the server, so nobody else reaches it first. Then add the step, or make the record by hand.
+- **An app whose first sign-up becomes its owner**, like Postiz. Leave the **DNS record** step out until its owner has signed up, through a hosts-file line pointing at the server, as soon as the first deploy finishes. With no record, ordinary visitors can't find it, but anyone who sends its hostname to the server's IP can, so don't leave a gap between the deploy and the sign-up. Then add the step, or make the record by hand.
 
 `social` and `moodle` got their records by hand, before the step existed.
 
@@ -253,7 +253,7 @@ An app is backed up by shipping `deploy/backup.sh` and `deploy/restore.sh`, or a
 - **Logs.** `docker logs -f traefik` for routing and certificates; `docker compose logs -f` in an app's directory for the app.
 - **Docker updates.** Held. Upgrade by hand in a quiet period: `snap refresh docker` on the droplet, which restarts every container; on a server set up from `host/`, as [its README](https://github.com/Indy-Center/docker-infrastructure/blob/main/host/README.md) says.
 - **Certificate renewal.** Automatic, on each server. Traefik renews 30 days before expiry using the Cloudflare token the deploy writes to `/home/deploy/traefik/.env`. The token is locked to the servers' IPs, so if a server ever changes IP, its renewals fail — loudly in Traefik's logs, with a month to fix it: add the new IP to the token's allow-list in Cloudflare.
-- **Adding a server.** Ordering it, its base setup, its four settings and its place in `docker-infrastructure`'s server list are the Rebuild the VPS runbook's job, in Operations, rather than this page's.
+- **Adding a server.** Ordering it, its base setup, its four settings and its place in `docker-infrastructure`'s server list are [Rebuild the VPS](/operations/rebuild-the-vps/)'s job, rather than this page's.
 
 ## Things that bit us
 

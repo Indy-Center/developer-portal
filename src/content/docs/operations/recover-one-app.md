@@ -192,4 +192,4 @@ Both restore their databases and uploaded files together, stopping the app while
 
 ## An app on a new server
 
-Backups are kept by app name, not by server, so an app deployed to a new server can be restored there from the old server's backups. Deploy the app first, so `~/apps/<app>/` and its `restore.sh` exist, then follow the steps above on the new server. The CMS's `restore.sh` starts its database itself when it isn't running yet. Moving a whole server, DNS included, is the Rebuild the VPS runbook's job.
+Backups are kept by app name, not by server, so an app deployed to a new server can be restored there from the old server's backups. Deploy the app first, so `~/apps/<app>/` and its `restore.sh` exist, then follow the steps above on the new server. The CMS's `restore.sh` starts its database itself when it isn't running yet. Moving a whole server, DNS included, is [Rebuild the VPS](/operations/rebuild-the-vps/)'s job.
