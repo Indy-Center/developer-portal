@@ -17,7 +17,7 @@ CI runs these on every pull request, in this order, and each one runs the same w
 npm run format:check   # npm run format rewrites whatever it flags
 npm run check          # astro check
 npm run build
-npm test               # vitest: the project registry, and llms.txt in the build
+npm test               # vitest: the project registry, the public API page's examples, and llms.txt in the build
 ```
 
 A pull request needs green checks and one approval to merge. Merging to `main` deploys.
