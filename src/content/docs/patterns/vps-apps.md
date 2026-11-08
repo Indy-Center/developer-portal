@@ -143,7 +143,7 @@ A CNAME to the server's own name rather than an A record to its IP, so an IP cha
 The step never changes or deletes a record, so two cases are still done by hand in Cloudflare, **DNS → Records**:
 
 - **Moving an app between servers.** Its record already points at the old server, so the step only warns. Switching it is one step of the move, done on purpose. Once the record points at the new server, the step does nothing.
-- **An app whose first sign-up becomes its owner**, like Postiz. Leave the **DNS record** step out until its owner has signed up, through a hosts-file line pointing at the server, so nobody else reaches it first. Then add the step, or make the record by hand.
+- **An app whose first sign-up becomes its owner**, like Postiz. Leave the **DNS record** step out until its owner has signed up, through a hosts-file line pointing at the server, as soon as the first deploy finishes. With no record, ordinary visitors can't find it, but anyone who sends its hostname to the server's IP can, so don't leave a gap between the deploy and the sign-up. Then add the step, or make the record by hand.
 
 `social` and `moodle` got their records by hand, before the step existed.
 
