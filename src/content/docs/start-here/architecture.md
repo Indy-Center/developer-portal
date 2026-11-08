@@ -5,13 +5,13 @@ sidebar:
   order: 2
 ---
 
-Indy Center runs on Cloudflare Workers. One of them, `identity`, owns auth; `charts` and any new service ask it who the user is over a service binding. A VPS and a small k3s cluster run the rest.
+Indy Center runs on Cloudflare Workers. One of them, `identity`, owns auth; `charts` and any new service ask it who the user is over a service binding. A couple of VPS servers and a small k3s cluster run the rest.
 
 ## Workers first
 
 Nearly everything runs on Cloudflare Workers. The exceptions:
 
-- **Vanderbilt VPS.** Apps that need a long-running server or are someone else's software in a container — Wiki.js today. One Traefik, deployed from `docker-infrastructure`, serves a Let's Encrypt wildcard for `*.flyindycenter.com` and routes to each app; every app deploys itself from its own repository over SSH. [Deploying to the VPS](/patterns/vps-apps/) covers adding one.
+- **VPS servers.** Apps that need a long-running server or are someone else's software in a container — Wiki.js today. ALEXANDRIA, at Hostinger, takes every new app; VANDERBILT, the DigitalOcean droplet, runs the rest until they've moved. One Traefik on each, deployed from `docker-infrastructure`, serves a Let's Encrypt wildcard for `*.flyindycenter.com` and routes to the apps on that server; every app runs on one server and deploys itself there from its own repository over SSH, and DNS sends each hostname to its server. [Deploying to the VPS servers](/patterns/vps-apps/) covers adding one, and [Operations](/operations/backups/) how they're backed up.
 - **k3s cluster.** Being phased out. It still runs `controller-tools`, the older ATC tools app at `tools.flyindycenter.com`, and nothing new goes on it. It goes away once `controller-tools`' Workers rewrite, `tools` at `app.controller.tools`, replaces it; that rewrite exists but is early.
 
 ## Identity
