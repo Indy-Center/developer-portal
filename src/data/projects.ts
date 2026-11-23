@@ -82,7 +82,7 @@ export const projects: Project[] = [
     repo: "https://github.com/Indy-Center/teamspeak-server",
     status: "active",
     summary:
-      "The TeamSpeak 3 voice server on the Vanderbilt VPS, run from the official image, with its backup recipe. Also runs teamspeak-bot (bot/), which applies the role sync's TeamSpeak changes that indy-larry queues, over ServerQuery.",
+      "The TeamSpeak 3 voice server on the Vanderbilt VPS, run from the official image, with its backup recipe. Also holds teamspeak-bot (bot/), which sets members' TeamSpeak server groups over ServerQuery; the deploy publishes its image but doesn't start it until TeamSpeak moves to ALEXANDRIA.",
   },
   {
     name: "vatisfiles",
