@@ -193,7 +193,7 @@ Migrate first, so new code never runs against the old schema. The cost is a wind
 
 The two workflows above are independent. A push to `main` starts both at once, and the deploy doesn't wait for or look at the checks. A pull request that fails [its checks](/agreements/ci-checks/) shouldn't be merged, but a direct push to `main`, or two pull requests that pass alone and break together, still deploys.
 
-To make deploy depend on checks, have the deploy workflow call CI as a reusable workflow. `teamspeak-bot` and `docker-infrastructure` do this. Adapted from `teamspeak-bot`'s `ci.yml` and `deploy.yml`:
+To make deploy depend on checks, have the deploy workflow call CI as a reusable workflow. `teamspeak-server` and `docker-infrastructure` do this. Adapted from `teamspeak-server`'s `ci.yml` and `build-and-deploy.yml`:
 
 ```yaml
 # ci.yml — no push trigger. On main, CI runs inside the deploy workflow
@@ -221,4 +221,4 @@ jobs:
       # ...same steps as above
 ```
 
-Every VPS deploy is gated this way; the example app's workflows already are. `teamspeak-bot` deploys to the VPS with its own older forced-command script, so for VPS deploy steps copy `docker-infrastructure`'s example rather than `teamspeak-bot`'s.
+Every VPS deploy is gated this way; the example app's workflows already are.
