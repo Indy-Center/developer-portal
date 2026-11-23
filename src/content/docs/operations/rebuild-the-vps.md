@@ -180,7 +180,7 @@ Lower a record's TTL a day before switching it, and put it back after. A proxied
 
 ## 10. TeamSpeak's ports
 
-TeamSpeak is the one app that publishes ports of its own. Before it moves to a server, add UDP 9987 (voice) and TCP 30033 (file transfer) to that server's firewall, for any source. Never its ServerQuery ports. Its DNS record is the one clients connect to directly, so lower its TTL a day ahead like any other. Not run yet: TeamSpeak moves to ALEXANDRIA after this page is written.
+TeamSpeak is the one app that publishes ports of its own. Before it moves to a server, add UDP 9987 (voice) and TCP 30033 (file transfer) to that server's firewall, for any source. Never its ServerQuery ports. Its DNS record is the one clients connect to directly, so lower its TTL a day ahead like any other. Members connect by `ts.flyzid.org`, a DNS-only CNAME to the server's name (and by the `ZID` nickname on myTeamSpeak, which follows it).
 
 ## 11. Retire the old server
 
