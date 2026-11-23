@@ -9,7 +9,7 @@ Every app on the VPS servers is backed up by one scheduled job per server, the *
 
 **The encryption key comes first.** Every backup is encrypted with one `age` key. Its source copy is the 1Password item "Backups — age encryption key" in the Infrastructure vault, and a copy sits on each server for the runner. Lose both the servers and that 1Password item and every backup is unreadable. Never replace the key to rotate it: backups made with the old key need the old key.
 
-**Status.** The runner, its report and alerts, the media copy, the weekly restore check and the helper commands are live on both servers. The CMS, TeamSpeak, indy-larry, Postiz and Moodle ship recipes. The wiki doesn't yet: it still runs outside the deploy pipeline, so the runner can't see it until it moves (see [What's covered](#whats-covered)).
+**Status.** The runner, its report and alerts, the media copy, the weekly restore check and the helper commands are live on ALEXANDRIA, where every app now runs. Every app ships a recipe: the CMS, TeamSpeak, indy-larry, the wiki, Postiz and Moodle. The old droplet's runner was turned off on 2026-11-23, with the last move.
 
 ## How it works
 
@@ -30,7 +30,9 @@ Three more jobs ride on the same runs:
 
 Anything that needs a person is an **alert**, in tech-team-alerts, straight away: a failed recipe, encryption or upload, an app with no recipe, a failed media copy or restore check. Everything else is only logged, in `~/backup-runner/logs/runner.log` on the server.
 
-Each server runs its own runner over its own apps, and all of them write to the same bucket, in folders named for the app rather than the server. So the report's title and every alert name the server (`Backups on vanderbilt for 2026-10-20`, `vanderbilt: Backup of …`), and an app moved to another server keeps its backup history: the new server's runner and helper commands see the old server's backups.
+Each server runs its own runner over its own apps, and all of them write to the same bucket, in folders named for the app rather than the server. So the report's title and every alert name the server (`Backups on alexandria for 2026-11-24`, `alexandria: Backup of …`), and an app moved to another server keeps its backup history: the new server's runner and helper commands see the old server's backups.
+
+The same folders are also a trap during a move. A runner backs up every folder in its `~/apps` that has a `backup.sh`, running or not. Leave a stopped app there on the old server and both runners write `<tier>/<app>/` at minute 7 — the old one with stale data — so `latest` can pick the stale copy. Move an app's folder out of `~/apps` on the old server as soon as it has moved ([Rebuild the VPS](/operations/rebuild-the-vps/#8-move-each-app), step 8), and restore by a backup's full name, never `latest`, until it has.
 
 > **Why a cron job on each server.** It's in git, the deploy installs it, and it comes back after a rebuild. Considered, not chosen: a scheduled GitHub workflow per app, which GitHub switches off after 60 days without activity in the repository; a systemd timer, which needs root and is set up by hand; an always-on container, which still needs Docker access to reach each app.
 
@@ -58,14 +60,14 @@ The runner never deletes anything; R2's lifecycle rules do. Its key can write to
 
 ## What's covered
 
-| App                | A backup holds                                                                                          | How often          |
-| ------------------ | ------------------------------------------------------------------------------------------------------- | ------------------ |
-| `payload` (CMS)    | `payload.tar`: the whole database (`pg_dump`) and each table's row count. Uploads are in the media copy | Every 6 hours      |
-| `teamspeak-server` | `teamspeak-server.tar.gz`: the SQLite database, which holds the server's identity, plus uploaded files  | Nightly            |
-| `indy-larry`       | `indy-larry-state.tar.gz`: the bot's state files                                                        | Nightly            |
-| `postiz`           | `postiz.tar`: its three databases and the uploads volume                                                | Nightly            |
-| `moodle`           | `moodle.tar`: the database and `moodledata`, without the caches                                         | Nightly            |
-| `wiki`             | Not yet. Once it moves onto the pipeline, `wiki.tar.gz`: the SQLite database and the `content` folder   | Nightly, from then |
+| App                | A backup holds                                                                                          | How often     |
+| ------------------ | ------------------------------------------------------------------------------------------------------- | ------------- |
+| `payload` (CMS)    | `payload.tar`: the whole database (`pg_dump`) and each table's row count. Uploads are in the media copy | Every 6 hours |
+| `teamspeak-server` | `teamspeak-server.tar.gz`: the SQLite database, which holds the server's identity, plus uploaded files  | Nightly       |
+| `indy-larry`       | `indy-larry-state.tar.gz`: the bot's state files                                                        | Nightly       |
+| `postiz`           | `postiz.tar`: its three databases and the uploads volume                                                | Nightly       |
+| `moodle`           | `moodle.tar`: the database and `moodledata`, without the caches                                         | Nightly       |
+| `wiki`             | `wiki.tar.gz`: the SQLite database and the `content` folder                                             | Nightly       |
 
 Each recipe takes a consistent copy while its app keeps running, and each app's own CI proves the round trip: add data, back up, wipe, restore, check the data is back.
 
@@ -131,11 +133,24 @@ GitHub never shows a secret again after it's saved, so 1Password is the only pla
 - **The encryption key's source copy is in 1Password.** Lose the servers and that item and every backup is unreadable. There's no second copy anywhere else.
 - **Data on Cloudflare isn't backed up.** Identity's D1, community-website's and training-tools' D1, and discord-bot's KV have no backups at all. This feature leaves that alone.
 - **One provider.** Every backup is in R2, on the same Cloudflare account as the CMS's uploads. A second copy with another provider (3-2-1) was considered and left for later: more to run than the risk warrants today.
-- **The wiki isn't backed up until it moves.** It runs on the old droplet outside `/home/deploy/apps/`, so the runner doesn't see it and doesn't alert about it either. A checked copy of its database was taken off the droplet by hand before the move started.
+- **Some settings live only in an app's data.** TeamSpeak's permissions for teamspeak-bot, for one, are in its database, not its repository. A restore brings them back; an app set up from scratch instead needs them set again by hand ([Recover one app](/operations/recover-one-app/#teamspeak-teamspeak-server)).
 - **Only the CMS has a restore check.** It's the only app whose backup format the runner knows. Every other app's restore is proven by its own CI, not against real backups.
 - **Getting one CMS upload back is partly by hand.** The runner's key can only read the CMS's buckets, so `backups media-get` downloads the file and the upload back is a step in Cloudflare's dashboard.
 - **The media copy only grows.** A file deleted from the CMS stays in the copy for good, and is protected against deletion for its first 60 days only.
 - **Nothing more frequent than the schedule.** At best a CMS restore loses the last 6 hours. Take `backups now <app>` before anything risky.
+
+## How long recovery takes
+
+Measured on the real moves to ALEXANDRIA, not estimated:
+
+| What                                                                       | Took                                                                                                                                     | When       |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| One app onto another server: the CMS, from its freeze to restored and live | About 15–25 minutes down: 8 minutes from the freeze to the merge, 5 for Build and Deploy, then the restore and DNS switch straight after | 2026-10-25 |
+| `bootstrap.sh` on a fresh server                                           | A couple of minutes                                                                                                                      | 2026-10-24 |
+| The staging certificate check against a new server                         | 40 seconds                                                                                                                               | 2026-11-08 |
+| A full rebuild, from 1Password to the first app restored                   | Not timed end to end yet. ALEXANDRIA's setup was spread over days of fixes; the yearly rebuild drill times it                            | —          |
+
+So for moving one app, plan on half an hour, most of it the deploy. A restore in place skips the deploy and DNS: it's `backups restore` alone.
 
 ## Out of scope
 

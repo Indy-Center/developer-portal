@@ -5,9 +5,9 @@ sidebar:
   order: 3
 ---
 
-This runbook takes a server from nothing to running apps: after a server is lost, or to add one and move apps across. It's also the guide for moving an app from one server to another. It's written from setting up ALEXANDRIA in October 2026 and moving the CMS onto it, so the steps are ones that have run. The few that haven't yet are marked.
+This runbook takes a server from nothing to running apps: after a server is lost, or to add one and move apps across. It's also the guide for moving an app from one server to another. It's written from setting up ALEXANDRIA in October 2026 and moving every app onto it by November, so the steps are ones that have run. The few that haven't yet are marked.
 
-Read it through once before starting. Each step says what it does, what you should see, and how to undo it. Exact commands for the base setup stay in [`host/README.md`](https://github.com/Indy-Center/docker-infrastructure/blob/main/host/README.md) in `docker-infrastructure`; this page explains them and covers everything around them.
+Read it through once before starting. Each step says what it does, what you should see, and how to undo it. Commands for the server are one line each on purpose: some terminals drop lines from a pasted block, and a half-pasted command on a live server is worse than none. Exact commands for the base setup stay in [`host/README.md`](https://github.com/Indy-Center/docker-infrastructure/blob/main/host/README.md) in `docker-infrastructure`; this page explains them and covers everything around them.
 
 **Who runs what.** You'll act as three different users:
 
@@ -49,7 +49,7 @@ Run the Ubuntu release `host/` supports, on x86-64, in US East: TeamSpeak's voic
 
 As root. This step takes a few minutes.
 
-Check the image's SSH settings first. If it allows password login and you can't run `bootstrap.sh` straight away, turn it off until you can; `bootstrap.sh` sets SSH properly and removes the stopgap ([`host/README.md`](https://github.com/Indy-Center/docker-infrastructure/blob/main/host/README.md#first-login-a-new-server) says how).
+Check the image's SSH settings first, with `sshd -T | grep -Ei 'passwordauth|permitroot'`. Don't trust its config files: ALEXANDRIA's image had `PasswordAuthentication no` in one file and `yes` in another that sorted first and won. If it allows password login and you can't run `bootstrap.sh` straight away, turn it off until you can; `bootstrap.sh` sets SSH properly and removes the stopgap ([`host/README.md`](https://github.com/Indy-Center/docker-infrastructure/blob/main/host/README.md#first-login-a-new-server) says how).
 
 **Fetch `host/` at a pinned commit and run `bootstrap.sh`.** Use the full SHA of the commit you've read, never a branch name, so what runs is what you reviewed. Run it with the server's hostname, your username, your public key, and the public half of the deploy key, each key in quotes. [`host/README.md`, "First login"](https://github.com/Indy-Center/docker-infrastructure/blob/main/host/README.md#first-login-a-new-server) has the exact commands. Your username must already be in `AllowUsers` in `host/`; if it isn't, it stops before changing anything.
 
@@ -130,8 +130,8 @@ _Undo:_ remove the prefix from the list, delete the four settings, and take the 
 
 **Merge the server list pull request.** Build and Deploy runs once per server. On the new one it writes Traefik's Cloudflare token, starts Traefik, and installs the backup runner with its secrets (rclone's `r2:` remote, the age key, the webhooks), its crontab entry and the `backups` command. It copies `host/` and `app-dns/` too. The other servers get the same Traefik again, with no change, so their sites stay up.
 
-:::note[Until the droplet's wiki moves]
-Traefik's config still names `frontend`, the network the droplet's old Traefik used, so a new server's first deploy fails with `network frontend declared as external, but could not be found`. Make it empty, as `deploy`, then re-run the failed job: `docker network create frontend`. It goes away when the wiki moves off the droplet.
+:::note[Until the `frontend` network is retired]
+Traefik's config still names `frontend`, the network the droplet's old Traefik used, so a new server's first deploy fails with `network frontend declared as external, but could not be found`. Make it empty, as `deploy`, then re-run the failed job: `docker network create frontend`. Nothing uses it since the wiki moved, and it comes out of Traefik's config with the droplet's retirement.
 :::
 
 _You should see_ every server's job go green. Then on the new server:
@@ -144,52 +144,82 @@ _Undo:_ drop the server from the list and merge again. Nothing on the other serv
 
 ## 8. Move each app
 
-One app at a time. Each one's data comes from its last backup, through the same [Recover one app](/operations/recover-one-app/#an-app-on-a-new-server) steps used for any restore. The CMS moved this way on 2026-10-25, down for about 15–25 minutes.
+One app at a time. Each one's data comes from its last backup, through the same [Recover one app](/operations/recover-one-app/#an-app-on-a-new-server) steps used for any restore. The CMS moved this way on 2026-10-25, down for about 15–25 minutes, and TeamSpeak, indy-larry and the wiki on 2026-11-23.
 
 An empty app on a new server is a risk: an empty CMS offers first-admin sign-up, and an empty Wiki.js offers its setup page, to whoever opens it first. Keeping its DNS record on the old server keeps ordinary visitors away, but not someone who sends the app's hostname straight to the new server's IP: Traefik routes by the name asked for, and port 443 is open to everyone. So restore straight after the deploy, without a gap. The restore replaces the whole database, including anything someone set up in the meantime. An app like that also leaves the DNS record step out of its workflow until its data is restored and checked.
 
-1. **A day before:** lower the TTL on the app's DNS record to 60 or 120 seconds, so the switch in step 7 takes effect quickly. Give the app's repository access to the new server's four settings. Tell the people who edit the app when it will pause. Hold the app's other merges until it's moved: a push to `main` deploys.
+1. **A day before:** lower the TTL on the app's DNS record to 60 or 120 seconds, so the switch in step 7 takes effect quickly; a proxied record switches at once, so it needs nothing. Give the app's repository access to the new server's four settings. Tell the people who edit the app when it will pause. Hold the app's other merges until it's moved: a push to `main` deploys.
 2. **Point its workflow at the new server,** in a pull request: `SERVER: <SERVER>` in its `build-and-deploy.yml`. Don't merge yet. If its last check calls the app by its hostname, make it call the server it deployed to (`curl --connect-to`), since DNS still names the old one.
-3. **Freeze and back it up.** On the old server, as `deploy`: `backups now <app>`, then `backups list <app>`, and note the new backup's full name. Stop the app, keeping its data: `docker compose down` in `~/apps/<app>`. **Never add `-v`: it deletes the volumes.** _You should see_ `docker volume ls` still list the app's volumes. _Undo:_ `docker compose up -d` in the same folder.
+3. **Freeze, then back it up.** On the old server, as `deploy`, in `~/apps/<app>`: stop what people write through first, so no edit lands after the backup, then `backups now <app>`, then `backups list <app>`, and note the new backup's full name. Stop with `docker compose stop`, not `down`: the containers stay, so the undo is one command and a copy can still read their volumes. **Never `down -v`: it deletes the volumes.** What to stop depends on what the app's `backup.sh` reads from (the table below). _Undo:_ `docker compose start` in the same folder.
 4. **Merge the pull request.** Build and Deploy starts the app on the new server, empty. Visitors still go to the old server, but the empty app can be reached by IP, so go straight on to the restore.
 5. **Restore** on the new server, as `deploy`: `backups restore <app> <the backup's full name>`. **Use the full name, never `latest`:** the new server's runner may already have backed up the empty app. [Recover one app](/operations/recover-one-app/) has what each app's restore does.
-6. **Check it before DNS moves,** from your computer: `curl -sI --resolve <host>:443:<new server's IP> https://<host>/` answers as the app should, not with a setup or sign-up page. For a real look, add a hosts-file line pointing the hostname at the new server, sign in and look around, then remove the line.
+6. **Check it before DNS moves,** from your computer: `curl -sI --resolve <host>:443:<new server's IP> https://<host>/` answers as the app should, not with a setup or sign-up page (an empty Wiki.js's page title is "Wiki.js Setup"). For a real look, add a hosts-file line pointing the hostname at the new server, sign in and look around, then remove the line. Check signed in: some apps show guests only part of what they hold.
 7. **Switch DNS** (next section). _You should see_ the new server's Traefik log show the app's requests within the TTL.
-8. **Take the old copy out of the old runner.** On the old server, as `deploy`: `mkdir -p ~/moved-apps && mv ~/apps/<app> ~/moved-apps/`. The runner backs up only what's under `~/apps`, so it stops backing up the stopped copy into the folders the new server now uses. The volumes stay as the fallback. _Undo:_ move it back.
+8. **Take the old copy out of the old runner, straight away.** On the old server, as `deploy`: `mkdir -p ~/moved-apps && mv ~/apps/<app> ~/moved-apps/`. The runner backs up every folder under `~/apps`, stopped or not, into the same `<tier>/<app>/` folders the new server now writes, so until this step the old server keeps adding stale backups beside the new ones ([Backups](/operations/backups/#how-it-works)). The volumes stay as the fallback. _Undo:_ move it back.
 9. **Back it up from the new server:** `backups now <app>`. The next morning, the new server's report lists the app and the old one's doesn't. Put the TTL back.
 
-_Undo, after step 7:_ point DNS back at the old server, move its copy back into `~/apps/` and `docker compose up -d` there, and revert the pull request. Edits made on the new server since the switch are lost, unless you first restore a backup from the new server onto the old one the same way.
+What step 3 stops, by recipe:
+
+| App                  | Its `backup.sh` reads from                | So at the freeze                                                  |
+| -------------------- | ----------------------------------------- | ----------------------------------------------------------------- |
+| `payload` (CMS)      | The running `db` container                | `docker compose stop app`, then back up                           |
+| `moodle`             | The running `db` container                | `docker compose stop app cron`, then back up                      |
+| `postiz`             | The running `db` and `app` containers     | Back up, then `docker compose stop`; tell its users to stop first |
+| `teamspeak-server`   | Its volume, from a throwaway container    | `docker compose --profile bot stop`, then back up                 |
+| `wiki`, `indy-larry` | Their volumes, from a throwaway container | `docker compose stop`, then back up                               |
+
+_Undo, after step 7:_ point DNS back at the old server, move its copy back into `~/apps/` and `docker compose start` there, and revert the pull request. Edits made on the new server since the switch are lost, unless you first restore a backup from the new server onto the old one the same way.
 
 Apps with no data, like Postiz and Moodle when they started, just deploy to the new server: there's nothing to freeze or restore.
 
-**Not run this way yet** (the steps above are the plan):
+**A rehearsal can become the move.** For an app worth testing on the new server before members use it, as TeamSpeak was, do steps 2–6 with the old copy still running, from a backup taken without stopping it. If nothing that matters changes on the old server after that backup, there's no need for a second backup and restore at the cutover: stop the old copy, move its folder out of `~/apps` and switch DNS. That saves a restore, and it keeps anything fixed on the new copy during the rehearsal, which a fresh restore would overwrite. TeamSpeak's bot permissions were set that way. Keep the rehearsal short: the new server backs up the copy nightly under the same name.
 
-- **The wiki.** It isn't on the deploy pipeline on the droplet, so its freeze is a checked copy taken by hand rather than `backups now`, restored with its own `restore.sh` as [Recover one app](/operations/recover-one-app/#the-wiki) describes. Once it's off the droplet, the `frontend` network in step 7 is retired.
-- **TeamSpeak.** Clients connect to it directly, not through Traefik, so it also needs its ports (below), and anything that names the old IP rather than the hostname has to change.
+**Each app moved a little differently:**
+
+- **The wiki** came from the droplet's old setup, off the pipeline, so its freeze was a checked SQLite copy taken by hand rather than `backups now`, restored with its own `restore.sh` ([Recover one app](/operations/recover-one-app/#the-wiki)).
+- **TeamSpeak** is reached directly, not through Traefik, so it needs its ports first ([below](#10-teamspeaks-ports)), and anything that names the old IP rather than the hostname has to change.
+- **indy-larry** must never start empty, and two copies must never run at once ([Recover one app](/operations/recover-one-app/#indy-larry)). It froze with `docker compose stop` before its backup, and its deploy created the bot without starting it until the restore did.
+
+**One-off scripts read the repository's `.env`.** A script run with `vite-node` from a checkout loads the `.env` beside it, which fills in every value you didn't export, with development values. community-website's one-time copy during the moves picked up the development `IDENTITY_URL` (`localhost`) and client from `.env`, and failed 610 times. Before running anything against production, export every value it needs, and comment out `.env`'s lines.
 
 ## 9. Switch DNS
 
-Each app has its own DNS record, a **CNAME to its server's own name** (`<name>.flyzid.org`), not an A record to the IP, so an IP change is one record to fix. Records are DNS-only: Traefik serves the certificate itself.
+Each app has its own DNS record, a **CNAME to its server's own name** (`<name>.flyzid.org`), not an A record to the IP, so an IP change is one record to fix. New records are DNS-only, since Traefik serves the certificate itself; a few older ones, the CMS's and the wiki's, are proxied through Cloudflare, and a move keeps whichever an app has.
 
 - **A new app** gets its record from its deploy. The DNS record step creates a missing CNAME to the server it deployed to, and never changes or deletes a record ([Deploying to the VPS servers](/patterns/vps-apps/#hostname-dns-and-certificate)).
 - **A moving app** already has a record, pointing at the old server, so the step only warns. Switch it by hand in Cloudflare, **DNS → Records**: make it a CNAME to the new server's name. Keep its proxy setting as it was. This is deliberate: a switch is one step of a move, done by a person, and a typo in an app's config can't take over another app's hostname.
 
-The `*.flyindycenter.com` wildcard record points at the droplet and is never moved. A hostname with no record of its own answers from the droplet, so check an app has its own record before relying on it. Once every app has moved, the wildcard is deleted with the droplet's records, and a hostname with no record then fails to resolve instead of quietly reaching the wrong server.
+There's no `*.flyindycenter.com` wildcard record any more. It pointed at the droplet, so a hostname with no record of its own quietly answered from there; it was deleted on 2026-11-23, once every live name had its own record. A hostname with no record now fails to resolve, which is the failure you want.
 
-Lower a record's TTL a day before switching it, and put it back after. A proxied record ignores its TTL and switches almost at once.
+Lower a DNS-only record's TTL a day before switching it, and put it back after. A proxied record switches at once, whatever its TTL, since visitors only ever see Cloudflare's addresses.
+
+**Check a switch with DNS-over-HTTPS,** not `dig`. A local resolver or router may cache answers, even for queries sent straight to Cloudflare's nameservers, and you'll see the old answer with its TTL counting down. Cloudflare's own resolver answers fresh:
+
+```sh
+curl -s -H 'accept: application/dns-json' 'https://cloudflare-dns.com/dns-query?name=<host>&type=A'   # a DNS-only CNAME shows its target, then the server's IP
+```
 
 ## 10. TeamSpeak's ports
 
 TeamSpeak is the one app that publishes ports of its own. Before it moves to a server, add UDP 9987 (voice) and TCP 30033 (file transfer) to that server's firewall, for any source. Never its ServerQuery ports. Its DNS record is the one clients connect to directly, so lower its TTL a day ahead like any other. Members connect by `ts.flyzid.org`, a DNS-only CNAME to the server's name (and by the `ZID` nickname on myTeamSpeak, which follows it).
 
+Check a restored copy by connecting to the new server's IP directly, before DNS moves: no "server identity changed" warning, the same channels and permissions, and channel icons loading, which proves 30033 is open. teamspeak-bot starts with it and needs its TeamSpeak permissions, which a backup brings back and a server set up from scratch doesn't ([Recover one app](/operations/recover-one-app/#teamspeak-teamspeak-server)).
+
 ## 11. Retire the old server
 
-Once its apps have all moved and the new server has had a week of good backups, take out everything that still points at the old server. Not run yet: this is the plan for the droplet.
+Once its apps have all moved and the new server has had a week of good backups, take out everything that still points at the old server. The first part ran for the droplet on 2026-11-23, the day its last app moved:
+
+- **Check nothing is left.** As `deploy`: `ls ~/apps` is empty, and `docker ps` shows only Traefik.
+- **Turn off its runner,** as `deploy`: `crontab -e` and comment out the `# backup-runner` line. The same day, remove the server from the status Worker's `pings` key in Cloudflare KV, or the status page alerts every morning that its backups never finished.
+- **Delete any wildcard record first,** once every live hostname has its own record. Whatever still resolved through it shows up as broken, which is how the droplet's leftovers (`scheddy`, `voice`, `ts`) were found. Remove those too, until only the server's own record holds its IP.
+- **Power it off,** and keep it, with its stopped apps, as the fallback for the week.
+
+Then, after the week (planned for the droplet on 2026-11-30):
 
 - Drop its prefix from `docker-infrastructure`'s server list, and delete its four org settings (`VANDERBILT_HOST`, `VANDERBILT_KNOWN_HOSTS` and the rest).
 - Take its IP off the Cloudflare DNS token's allow-list.
-- Delete its DNS records, and the `*.flyindycenter.com` wildcard with them.
-- Remove TeamSpeak's ports from its firewall, if it had them.
+- Delete its own DNS records and its deploy key in 1Password.
+- Destroy it, with its snapshots.
 
 ## If the server's IP changes
 

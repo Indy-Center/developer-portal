@@ -14,12 +14,14 @@ A restore replaces the app's live data with the backup's. Anything changed since
 On the server the app runs on, from your own login:
 
 ```sh
-ssh <you>@<server>          # alexandria.flyzid.org, or the old droplet for apps not yet moved
-sudo -iu deploy             # the helper commands, the runner's key and the apps all belong to deploy
+ssh <you>@<server>          # alexandria.flyzid.org
+sudo -iu deploy             # -i matters: the helpers, the runner's key and the apps belong to deploy, and -i puts you in its home
 backups --help
 ```
 
-You should see the list of commands. If `backups` isn't found, the shell predates the deploy that installed it: `exec bash -l`, or run `bash ~/backup-runner/backups.sh` instead, which is the same thing. Every command takes `--help`.
+You should see the list of commands. `backups` exists only for `deploy`: from your own account it's never found. If it isn't found as `deploy` either, the shell predates the deploy that installed it: `exec bash -l`, or run `bash ~/backup-runner/backups.sh` instead, which is the same thing. Every command takes `--help`.
+
+Plain `sudo -u deploy`, without `-i`, leaves you in your own home folder, which `deploy` can't write to, so anything that downloads into the current folder fails.
 
 Nothing here changes anything. Leave with `exit`, twice.
 
@@ -121,9 +123,11 @@ Undo, when you're done: `backups scratch-cms remove`, which deletes the containe
 The media copy keeps every file ever uploaded. Find the file, then download it:
 
 ```sh
-backups media-find <part of its name>          # prints <bucket>/<path> lines
-backups media-get payload-media/<path> ~/look  # mkdir -m 700 ~/look first
+backups media-find <part of its name>            # prints <bucket>/<path> lines
+backups media-get "payload-media/<path>" ~/look  # mkdir -m 700 ~/look first
 ```
+
+Quote the path. Upload names often have spaces (`"payload-media/Screenshot 2024-10-05 114320.png"`), and unquoted, `media-get` takes the second word as the folder to download into.
 
 `media-get` changes nothing: the runner's key can only read the CMS's buckets. It prints where the file belongs and how to get it to your computer, through `/tmp`, since your own login can't read `deploy`'s files:
 
@@ -144,7 +148,25 @@ Undo: delete the uploaded file in the bucket. The media copy still has it.
 
 The backup holds the server's **identity**, its key pair, inside its SQLite database. Clients remember it, so a server that comes back with a new identity is a different server to them: they warn, and saved bookmarks and permissions don't match. Only the backup brings the same identity back, which is why the archive is treated as a secret. `restore.sh` checks for it: if the server announces a new admin privilege key on start, it started on an empty database, and the restore counts as failed.
 
-Everyone on the server is disconnected while it restarts. Afterwards, restart the legacy Discord sync bot, in `/opt/ts-disc-control` on the droplet: it never reconnects to ServerQuery on its own.
+Everyone on the server is disconnected while it restarts. teamspeak-bot, the role sync's TeamSpeak side, runs beside it as a second compose service behind the `bot` profile. It retries its ServerQuery login until the server is back, so it needs nothing after a restore. Anything you run by hand on the app needs the profile too, or it leaves the bot out: `docker compose --profile bot down` stops both, where plain `docker compose down` leaves the bot running.
+
+**The bot's TeamSpeak permissions live in the database,** not in the repository, on its server group **teamspeak-bot (27)**. A restore brings them back. A server set up from scratch, rather than from a backup, needs them set again:
+
+| Permission                                                                                                                                          | Value                                                                                           |
+| --------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `b_virtualserver_notify_register`, `b_virtualserver_client_dbsearch`, `b_virtualserver_servergroup_list`, `b_virtualserver_servergroup_client_list` | Granted                                                                                         |
+| `i_group_member_add_power`, `i_group_member_remove_power`                                                                                           | 50: every group it manages needs 50, and Server Admin needs 75, so it can't touch that          |
+| `i_client_private_textmessage_power`                                                                                                                | 75, for the link message                                                                        |
+| `i_client_permission_modify_power`                                                                                                                  | 75. Without it, changing a staff member's or admin's groups fails with `2568 failed_permid 175` |
+
+Nothing more: no `i_permission_modify_power`, and no token, kick or ban powers.
+
+**`serveradmin`** is TeamSpeak's own instance account, and the only one that can set instance-level (`b_serverinstance_*`) permissions; the client can't. Its password is kept in 1Password. The compose file passes `TS3SERVER_SERVERADMIN_PASSWORD` through from the shell, so to set a new one, as `deploy` in `~/apps/teamspeak-server`:
+
+```sh
+read -rs TS3SERVER_SERVERADMIN_PASSWORD && export TS3SERVER_SERVERADMIN_PASSWORD   # paste it; nothing echoes or lands in history
+docker compose up -d --force-recreate teamspeak                                      # recreates the server only; members reconnect
+```
 
 **If `restore.sh` fails** after the server stopped, it puts the earlier data back, starts the server on it, and says so. If even that fails, the earlier data stays in the volume at `/var/ts3server/.restore-old`, and the next restore refuses to run until it's been put back:
 
@@ -155,8 +177,6 @@ cd ~/apps/teamspeak-server && bash restore.sh --undo
 You should see `Put back the data from before the interrupted restore.`
 
 ## The wiki
-
-**Status.** The wiki doesn't run on the deploy pipeline yet, so nothing here applies to it until it moves; until then its copy is the one taken by hand before the move started. This section describes the recipe the wiki moves with.
 
 A wiki backup is one compressed archive, `wiki.tar.gz`, holding its SQLite database, `database.sqlite`, and its `content` folder. The database is everything the wiki is: pages, uploaded files, user accounts, the OAuth2 sign-in settings and the session keys. It holds password hashes and the sign-in client secret, so don't leave a decrypted copy lying around. The `/wiki/backups` volume, where the Local File System storage target writes its copy of the pages, isn't in the backup on purpose: it's a copy of what's in the database.
 
@@ -176,7 +196,14 @@ cd ~/apps/wiki && bash restore.sh --undo
 
 You should see `Put back the data from before the interrupted restore.`, or `Nothing to undo: no data set aside by an interrupted restore.` if there was nothing to put back.
 
-`restore.sh` also takes a bare SQLite copy of the database, such as the one taken by hand before the move, instead of an archive. Run it from `~/apps/wiki` as `bash restore.sh <file>.sqlite`. The `content` folder then comes back empty.
+`restore.sh` also takes a bare SQLite copy of the database, such as the one the wiki moved to ALEXANDRIA with, instead of an archive. The `content` folder then comes back empty. A copy you've `scp`'d up lands in your own home, where `deploy` can't read it, so hand it over first. From your own account, one line each:
+
+```sh
+sudo install -o deploy -g deploy -m 600 ~/wiki-<date>.sqlite /home/deploy/
+sudo -iu deploy bash -c 'cd ~/apps/wiki && bash restore.sh ~/wiki-<date>.sqlite && rm ~/wiki-<date>.sqlite'
+```
+
+It prints the copy's page count before it stops anything: compare it with the count where the copy was taken. Count pages in **Admin → Pages**, signed in. Signed out, the wiki and its GraphQL API list only the pages guests can see.
 
 Restore with the image version the backup was taken on. Wiki.js migrates its database on start and can't go back, so a backup restored into a newer version is upgraded for good. The image is pinned in the wiki's `deploy/docker-compose.yml`; take `backups now wiki` before changing it.
 
@@ -186,10 +213,14 @@ The exports in the admin area (to the `wikijs-backup` bucket, or to a local fold
 
 `restore.sh` checks every file in the archive before changing anything, then swaps them in by renaming and restarts the bot, which carries on with the same status messages, timers and any running Iron Mic. If the swap fails part-way, it puts the old files back. A restore killed part-way leaves `.restore-new` or `.restore-old` in the bot's volume, and the next restore refuses to run until they've been checked and removed by hand: `.restore-old` may hold the only copy of the old files.
 
+**Never let the bot start on an empty volume.** With no state it doesn't know its own messages, so it deletes every bot message in its channel, posts and crossposts new ones, and reposts its panels; a restore afterwards brings back its timers but not those messages. So its deploy checks the volume first: finding no state, it creates the bot without starting it and ends with a warning, and the restore starts it. If a restore fails after `Stopping the bot`, its trap starts the bot anyway, on whatever is in the volume; on a new server that's nothing, so run `docker compose down` at once.
+
+Only one copy may ever run: two on the same Discord token delete each other's messages. Stop the old one before the new one starts.
+
 ## Postiz and Moodle
 
 Both restore their databases and uploaded files together, stopping the app while they do. Restoring Moodle signs everyone out. Postiz's Redis isn't in the backup; Postiz refills it.
 
 ## An app on a new server
 
-Backups are kept by app name, not by server, so an app deployed to a new server can be restored there from the old server's backups. Deploy the app first, so `~/apps/<app>/` and its `restore.sh` exist, then follow the steps above on the new server. The CMS's `restore.sh` starts its database itself when it isn't running yet. Moving a whole server, DNS included, is [Rebuild the VPS](/operations/rebuild-the-vps/)'s job.
+Backups are kept by app name, not by server, so an app deployed to a new server can be restored there from the old server's backups. Deploy the app first, so `~/apps/<app>/` and its `restore.sh` exist, then follow the steps above on the new server. Restore by the backup's full name, never `latest`: the new server's runner may already have backed up the empty app, which would make that the latest. The CMS's `restore.sh` starts its database itself when it isn't running yet. Moving a whole server, DNS included, is [Rebuild the VPS](/operations/rebuild-the-vps/)'s job.
