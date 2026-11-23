@@ -78,11 +78,11 @@ export const projects: Project[] = [
       "Discord bot that keeps one embed per Indy Center facility up to date with who's staffed on vNAS, polling the controller feed every 30 seconds. The first app deployed to the Vanderbilt VPS through the docker-infrastructure pipeline.",
   },
   {
-    name: "teamspeak-bot",
-    repo: "https://github.com/Indy-Center/teamspeak-bot",
-    status: "scaffold",
+    name: "teamspeak-server",
+    repo: "https://github.com/Indy-Center/teamspeak-server",
+    status: "active",
     summary:
-      "Syncs TeamSpeak server groups from VATUSA roster data and prompts unlinked users to link their account. Its CI is the most complete in the org.",
+      "The TeamSpeak 3 voice server on ALEXANDRIA, run from the official image, with its backup recipe. Also holds teamspeak-bot (bot/), which runs beside it and sets members' TeamSpeak server groups over ServerQuery for larry's role sync.",
   },
   {
     name: "vatisfiles",

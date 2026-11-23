@@ -270,4 +270,4 @@ Each of these happened during the setup.
 
 ## Out of scope
 
-Workers — see [CI shape](/patterns/ci-shape/). The k3s cluster, which is being phased out and takes no new apps. TeamSpeak, which runs on the VPS outside Docker and hasn't moved onto this setup.
+Workers — see [CI shape](/patterns/ci-shape/). The k3s cluster, which is being phased out and takes no new apps.
