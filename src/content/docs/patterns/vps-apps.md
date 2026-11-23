@@ -7,32 +7,33 @@ sidebar:
 
 The VPS servers run the apps that can't be Workers: long-running servers and self-hosted software shipped as containers. Each server runs its own Traefik, deployed from [`docker-infrastructure`](https://github.com/Indy-Center/docker-infrastructure), which terminates TLS for `*.flyindycenter.com` and routes to the apps on that server only. Each app lives in its own repository, runs on one server, and deploys itself there with GitHub Actions; DNS decides which server answers each hostname. This page is for someone adding an app; [CI shape](/patterns/ci-shape/#deploy-to-the-vps) has the workflow side.
 
-There are two servers today, each known by the prefix of its deploy settings:
+There's one server today, known by the prefix of its deploy settings:
 
-| Server         | What it is                                    | For                                               |
-| -------------- | --------------------------------------------- | ------------------------------------------------- |
-| **ALEXANDRIA** | A Hostinger VPS, `alexandria.flyzid.org`      | Every new app, and every existing app as it moves |
-| **VANDERBILT** | The DigitalOcean droplet the setup started on | The apps not yet moved. It closes once they have  |
+| Server         | What it is                                                                                                           | Runs      |
+| -------------- | -------------------------------------------------------------------------------------------------------------------- | --------- |
+| **ALEXANDRIA** | A Hostinger KVM 4 in Boston (4 vCPU, 16 GB, 200 GB NVMe), Ubuntu 26.04, `alexandria.flyzid.org`, set up from `host/` | Every app |
 
-**Status.** Traefik and the pipeline are live and the wiki is routed through them. The first app deployed with the [`examples/app/`](https://github.com/Indy-Center/docker-infrastructure/tree/main/examples/app) workflows is [`vnas-discord-bot`](https://github.com/Indy-Center/vnas-discord-bot), on 2026-09-27; what it turned up is folded in below.
+The setup started on **VANDERBILT**, a DigitalOcean droplet. Every app moved off it by 2026-11-23; it's powered off, running nothing, and is destroyed on 2026-11-30. Until then its prefix is still in `docker-infrastructure`'s server list, so each deploy there shows a failed VANDERBILT job beside a green ALEXANDRIA one.
+
+**Status.** Traefik, the pipeline and the backups are live, and every app deploys with the [`examples/app/`](https://github.com/Indy-Center/docker-infrastructure/tree/main/examples/app) workflows. The first to do so was [`vnas-discord-bot`](https://github.com/Indy-Center/vnas-discord-bot), on 2026-09-27; what it turned up is folded in below.
 
 ## How the box is set up
 
-| Piece           | Where                                                                                                                                                                |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Traefik         | `/home/deploy/traefik/`, deployed from `docker-infrastructure`'s `traefik/` folder                                                                                   |
-| Apps            | `/home/deploy/apps/<repo name>/`, one directory per app                                                                                                              |
-| Backup runner   | `/home/deploy/backup-runner/`, deployed from `docker-infrastructure`; see [Backups](/operations/backups/)                                                            |
-| Backup staging  | `/home/deploy/backups/<app>/`, emptied after each backup                                                                                                             |
-| Shared network  | `traefik-shared`; every compose project uses it as `external: true`                                                                                                  |
-| Certificate     | One Let's Encrypt wildcard, `flyindycenter.com` + `*.flyindycenter.com`, renewed by Traefik                                                                          |
-| DNS             | `*.flyindycenter.com` points at the droplet, DNS-only. Each app on ALEXANDRIA has its own record; see [Hostname, DNS and certificate](#hostname-dns-and-certificate) |
-| Docker          | Docker's own apt packages, held, on a server set up from `docker-infrastructure`'s `host/`. The Canonical snap, held, on the DigitalOcean droplet                    |
-| Off-box backups | Cloudflare R2 bucket `indy-center-backups`, encrypted, in folders by how long each copy is kept, with a bucket lock; see [Backups](/operations/backups/)             |
+| Piece           | Where                                                                                                                                                    |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Traefik         | `/home/deploy/traefik/`, deployed from `docker-infrastructure`'s `traefik/` folder                                                                       |
+| Apps            | `/home/deploy/apps/<repo name>/`, one directory per app                                                                                                  |
+| Backup runner   | `/home/deploy/backup-runner/`, deployed from `docker-infrastructure`; see [Backups](/operations/backups/)                                                |
+| Backup staging  | `/home/deploy/backups/<app>/`, emptied after each backup                                                                                                 |
+| Shared network  | `traefik-shared`; every compose project uses it as `external: true`                                                                                      |
+| Certificate     | One Let's Encrypt wildcard, `flyindycenter.com` + `*.flyindycenter.com`, renewed by Traefik                                                              |
+| DNS             | One record per app, a CNAME to `alexandria.flyzid.org`, and no wildcard; see [Hostname, DNS and certificate](#hostname-dns-and-certificate)              |
+| Docker          | Docker's own apt packages, held, installed by `docker-infrastructure`'s `host/`                                                                          |
+| Off-box backups | Cloudflare R2 bucket `indy-center-backups`, encrypted, in folders by how long each copy is kept, with a bucket lock; see [Backups](/operations/backups/) |
 
 Deploys run as the `deploy` user, which is in the `docker` group. Traefik only routes containers labelled `traefik.enable=true`, redirects HTTP to HTTPS, and serves the wildcard certificate to every router with `tls=true`; apps never request their own.
 
-> **Why everything is under `/home/deploy`.** Docker on the droplet is the Canonical snap. Snap confinement stops both the `docker` CLI and the daemon from reading most paths outside `/home`, so a compose file in `/opt` fails with "no such file or directory" even though the file is there. Considered, not chosen: replacing the snap with Docker's own packages on the droplet. That means copying every container's data to a new location with the wiki down, and moving the paths fixed the problem without it. A new server gets Docker's apt packages instead, and keeps the same `/home/deploy` layout so apps don't care which server they're on. Either way Docker's updates are held, because each one restarts every container.
+> **Why everything is under `/home/deploy`.** It started as a workaround: Docker on the droplet was the Canonical snap, whose confinement stops both the `docker` CLI and the daemon from reading most paths outside `/home`, so a compose file in `/opt` failed with "no such file or directory" even though the file was there. ALEXANDRIA has Docker's own apt packages and no such limit, but kept the same layout so apps moved across without changes. Docker's updates are held, because each one restarts every container.
 
 ## Adding an app
 
@@ -130,11 +131,11 @@ An app with no web surface — a bot that only makes outbound calls, like `vnas-
 
 Every server's Traefik serves the same wildcard certificate, so any `<name>.flyindycenter.com` is covered on every server with no certificate request. DNS is what decides which server answers.
 
-**An app on ALEXANDRIA needs its own DNS record.** The `*.flyindycenter.com` wildcard record points at the droplet, so a hostname without a record of its own reaches the droplet's Traefik, which has no router for it and answers `404`. The deploy makes that record for you. The example workflow's **DNS record** step, after `docker compose up -d`, runs `~/.local/bin/app-dns --app <app>` on the server. It reads every hostname in the app's Traefik `Host()` rules, and for each one, in Cloudflare:
+**Every app needs its own DNS record.** There's no `*.flyindycenter.com` wildcard record, so a hostname without a record of its own doesn't resolve. The deploy makes that record for you. The example workflow's **DNS record** step, after `docker compose up -d`, runs `~/.local/bin/app-dns --app <app>` on the server. It reads every hostname in the app's Traefik `Host()` rules, and for each one, in Cloudflare:
 
 | The hostname has                                 | The DNS record step                                                                |
 | ------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| No record of its own (only the wildcard answers) | Creates a DNS-only CNAME to the server's own name, such as `alexandria.flyzid.org` |
+| No record of its own                             | Creates a DNS-only CNAME to the server's own name, such as `alexandria.flyzid.org` |
 | A CNAME to this server already                   | Does nothing                                                                       |
 | Any other record: a CNAME elsewhere, an A record | Warns, naming where it points, and leaves it alone; the step still passes          |
 
@@ -147,9 +148,9 @@ The step never changes or deletes a record, so two cases are still done by hand 
 
 `social` and `moodle` got their records by hand, before the step existed.
 
-The wildcard stays on the droplet while apps move, and is deleted with the droplet's records once they all have. A hostname with no record then fails to resolve, instead of quietly reaching whichever server the wildcard happens to point at.
+The wildcard pointed at the droplet while apps moved, and was deleted on 2026-11-23, once every live hostname had its own record. A hostname with no record now fails to resolve, instead of quietly reaching whichever server a wildcard happens to point at.
 
-An explicit DNS record wins over the wildcard. If one exists for the hostname — left over from an old deployment, or proxied through Cloudflare — it decides where traffic goes. Check **DNS → Records** in Cloudflare before assuming the wildcard applies.
+A record left over from an old deployment, or proxied through Cloudflare, still decides where its hostname goes, and the DNS record step won't touch it. Check **DNS → Records** in Cloudflare before assuming a hostname is free.
 
 ### Serving under a path
 
@@ -251,7 +252,7 @@ An app is backed up by shipping `deploy/backup.sh` and `deploy/restore.sh`, or a
 - **Traefik changes.** A pull request to `docker-infrastructure`. Merging deploys it to every server in its list. Changes under `traefik/dynamic/` apply without a restart; changes to `traefik.yml` or its compose file recreate the container, which interrupts every app for a couple of seconds.
 - **Dashboard.** One per server, read-only, on that server's loopback address only. Open it through an SSH tunnel with an admin account; the `deploy` key can't forward ports. `ssh -L 8080:localhost:8080 <admin>@<server>`, then `http://localhost:8080/dashboard/`.
 - **Logs.** `docker logs -f traefik` for routing and certificates; `docker compose logs -f` in an app's directory for the app.
-- **Docker updates.** Held. Upgrade by hand in a quiet period: `snap refresh docker` on the droplet, which restarts every container; on a server set up from `host/`, as [its README](https://github.com/Indy-Center/docker-infrastructure/blob/main/host/README.md) says.
+- **Docker updates.** Held. Upgrade by hand in a quiet period, as [`host/README.md`](https://github.com/Indy-Center/docker-infrastructure/blob/main/host/README.md) says.
 - **Certificate renewal.** Automatic, on each server. Traefik renews 30 days before expiry using the Cloudflare token the deploy writes to `/home/deploy/traefik/.env`. The token is locked to the servers' IPs, so if a server ever changes IP, its renewals fail — loudly in Traefik's logs, with a month to fix it: add the new IP to the token's allow-list in Cloudflare.
 - **Adding a server.** Ordering it, its base setup, its four settings and its place in `docker-infrastructure`'s server list are [Rebuild the VPS](/operations/rebuild-the-vps/)'s job, rather than this page's.
 

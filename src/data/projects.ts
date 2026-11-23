@@ -137,7 +137,7 @@ export const projects: Project[] = [
     status: "deprecated",
     replacedBy: "library (planned, no repo yet)",
     summary:
-      "Wiki.js instance on the Vanderbilt VPS, routed by docker-infrastructure's Traefik, and still the live knowledge base for controller-facing documentation. Content has been exported to markdown; its replacement has not been built.",
+      "Wiki.js instance on the ALEXANDRIA VPS server, deployed and backed up like every other VPS app, and still the live knowledge base for controller-facing documentation. Content has been exported to markdown; its replacement has not been built.",
   },
   {
     name: "vatsim-data-ingestor",
